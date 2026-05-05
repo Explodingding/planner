@@ -1,0 +1,99 @@
+:root {
+  --text: #625b71;
+  --text-h: #171321;
+  --bg: #fff8f1;
+  --panel: rgba(255, 255, 255, 0.82);
+  --card: #ffffff;
+  --muted: #f5efe7;
+  --input: #fffdf9;
+  --border: #eadfce;
+  --code-bg: #f5efe7;
+  --accent: #df5f37;
+  --button-text: #ffffff;
+  --button-secondary: #f5efe7;
+  --shadow:
+    rgba(67, 43, 25, 0.14) 0 12px 24px -10px, rgba(67, 43, 25, 0.08) 0 4px 10px -6px;
+  --soft-shadow: rgba(67, 43, 25, 0.08) 0 20px 70px -40px;
+
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 18px/145% var(--sans);
+  letter-spacing: 0.18px;
+  color-scheme: light;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  @media (max-width: 1024px) {
+    font-size: 16px;
+  }
+}
+
+#root {
+  width: min(1180px, 100%);
+  max-width: 100%;
+  margin: 0 auto;
+  min-height: 100svh;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, rgba(223, 95, 55, 0.16), transparent 28rem),
+    linear-gradient(180deg, #fff8f1 0%, #f9efe6 100%);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--heading);
+  font-weight: 800;
+  color: var(--text-h);
+}
+
+h1 {
+  font-size: clamp(40px, 6vw, 72px);
+  line-height: 0.95;
+  letter-spacing: -0.06em;
+  margin: 0 0 24px;
+  @media (max-width: 1024px) {
+    font-size: 36px;
+  }
+}
+
+h2 {
+  font-size: 28px;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  margin: 0 0 12px;
+  @media (max-width: 1024px) {
+    font-size: 20px;
+  }
+}
+
+h3,
+h4 {
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+code {
+  font-family: var(--mono);
+  display: inline-flex;
+  border-radius: 4px;
+  color: var(--text-h);
+  font-size: 15px;
+  line-height: 135%;
+  padding: 4px 8px;
+  background: var(--code-bg);
+}

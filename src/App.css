@@ -1,0 +1,357 @@
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 32px;
+  text-align: left;
+}
+
+.hero-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.8fr);
+  gap: 24px;
+  align-items: stretch;
+}
+
+.hero-copy,
+.event-card,
+.panel,
+.footer-panel {
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: var(--panel);
+  box-shadow: var(--soft-shadow);
+}
+
+.hero-copy {
+  padding: 48px;
+}
+
+.hero-copy p {
+  max-width: 720px;
+}
+
+.hero-actions,
+.inline-actions,
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.hero-actions {
+  margin-top: 28px;
+}
+
+.event-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 32px;
+}
+
+.card-label,
+.eyebrow {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+}
+
+.grid {
+  display: grid;
+  gap: 24px;
+}
+
+.two-columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.panel,
+.footer-panel {
+  padding: 28px;
+}
+
+.footer-panel {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+}
+
+.share-box {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+  padding: 18px;
+  border-radius: 18px;
+  background: var(--muted);
+}
+
+.share-box code {
+  overflow-wrap: anywhere;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--button-text);
+  cursor: pointer;
+  font: 700 15px/1 var(--sans);
+  text-decoration: none;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.button:hover {
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
+.button.primary {
+  background: var(--accent);
+}
+
+.button.secondary {
+  background: var(--button-secondary);
+  color: var(--text-h);
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 22px;
+}
+
+.gift-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.gift-card,
+.form-card,
+.approval-card {
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--card);
+}
+
+.gift-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 20px;
+}
+
+.gift-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.gift-meta,
+.reservation-note {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.reservation-note {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--muted);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--text-h);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pill.success,
+.state-dostepny {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.state-oczekuje {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.state-zarezerwowany {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.state-kupiony {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.attendance-yes {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.attendance-maybe {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.attendance-no {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.rsvp-overview {
+  display: grid;
+  gap: 18px;
+}
+
+.rsvp-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.rsvp-stats article {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border-radius: 20px;
+  background: var(--muted);
+}
+
+.rsvp-stats strong {
+  color: var(--text-h);
+  font-size: 34px;
+  line-height: 1;
+}
+
+.reservation-area {
+  margin-top: 24px;
+}
+
+.form-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  color: var(--text-h);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--input);
+  color: var(--text-h);
+  font: 16px/1.4 var(--sans);
+  padding: 12px 14px;
+}
+
+textarea {
+  min-height: 104px;
+  resize: vertical;
+}
+
+.mini-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.verification-box {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--muted);
+}
+
+.organizer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.approval-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.rsvp-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    padding: 16px;
+  }
+
+  .hero-section,
+  .two-columns,
+  .gift-list,
+  .organizer-grid,
+  .rsvp-stats,
+  .rsvp-list {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-copy {
+    padding: 30px;
+  }
+
+  .section-heading,
+  .footer-panel {
+    flex-direction: column;
+  }
+}
