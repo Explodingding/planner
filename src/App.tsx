@@ -1,125 +1,39 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { initialState } from './demoData'
+import type {
+  AttendanceStatus,
+  EventDetails,
+  PlannerState,
+  PublicEventRecord,
+  Reservation,
+  ReservationStatus,
+  Rsvp,
+  VerifiedGuest,
+} from './types'
 import './App.css'
 
-type ReservationStatus = 'pending' | 'approved' | 'rejected' | 'bought'
-type AttendanceStatus = 'yes' | 'no' | 'maybe'
-
-type EventDetails = {
-  childName: string
-  date: string
-  place: string
-  theme: string
-  notes: string
-}
-
-type Gift = {
-  id: string
-  title: string
-  category: string
-  details: string
-  priceHint: string
-}
-
-type Reservation = {
-  id: string
-  giftId: string
-  guestName: string
-  contact: string
-  message: string
-  status: ReservationStatus
-  createdAt: string
-}
-
-type Rsvp = {
-  id: string
-  guestName: string
-  contact: string
-  status: AttendanceStatus
-  adults: number
-  children: number
-  note: string
-  updatedAt: string
-}
-
-type PlannerState = {
-  event: EventDetails
-  gifts: Gift[]
-  reservations: Reservation[]
-  rsvps: Rsvp[]
-}
-
-type VerifiedGuest = {
-  name: string
-  contact: string
-}
-
 const STORAGE_KEY = 'prezentownik-mvp'
+const API_URL = '/.netlify/functions/events'
 
-const initialState: PlannerState = {
-  event: {
-    childName: 'Tosia',
-    date: '2026-05-24T15:00',
-    place: 'Sala zabaw Kolorowe Klocki, Warszawa',
-    theme: 'Urodziny w klimacie zwierzakow i klockow',
-    notes:
-      'Tosia lubi LEGO Friends, puzzle, kredki i ksiazki o zwierzetach. Prosimy unikac pluszakow, bo mamy ich juz bardzo duzo.',
-  },
-  gifts: [
-    {
-      id: 'gift-lego',
-      title: 'Zestaw LEGO Friends',
-      category: 'Klocki',
-      details: 'Najlepiej maly lub sredni zestaw ze zwierzakami albo domkiem.',
-      priceHint: '60-120 zl',
-    },
-    {
-      id: 'gift-book',
-      title: 'Ksiazka o zwierzetach',
-      category: 'Ksiazki',
-      details: 'Ilustrowana, dla dzieci 5-6 lat.',
-      priceHint: '30-60 zl',
-    },
-    {
-      id: 'gift-art',
-      title: 'Porzadne kredki lub flamastry',
-      category: 'Kreatywne',
-      details: 'Zestaw do rysowania, najlepiej zmywalny.',
-      priceHint: '40-80 zl',
-    },
-  ],
-  reservations: [
-    {
-      id: 'reservation-demo',
-      giftId: 'gift-book',
-      guestName: 'Mama Janka',
-      contact: 'mama.janka@example.com',
-      message: 'Moge kupic ksiazke i dorzuce kartke od Janka.',
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    },
-  ],
-  rsvps: [
-    {
-      id: 'rsvp-demo-yes',
-      guestName: 'Mama Janka',
-      contact: 'mama.janka@example.com',
-      status: 'yes',
-      adults: 1,
-      children: 1,
-      note: 'Janek bedzie, dziekujemy za zaproszenie.',
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: 'rsvp-demo-maybe',
-      guestName: 'Rodzice Hani',
-      contact: 'hania@example.com',
-      status: 'maybe',
-      adults: 1,
-      children: 1,
-      note: 'Potwierdzimy po weekendzie.',
-      updatedAt: new Date().toISOString(),
-    },
-  ],
+type RouteState = {
+  eventId: string | null
+  organizerToken: string | null
+  isRemote: boolean
+  isManageRoute: boolean
+}
+
+function getRoute(): RouteState {
+  const segments = window.location.pathname.split('/').filter(Boolean)
+  const token = new URLSearchParams(window.location.search).get('token')
+  const isEventRoute = segments[0] === 'event' && Boolean(segments[1])
+  const isManageRoute = segments[0] === 'manage' && Boolean(segments[1])
+
+  return {
+    eventId: isEventRoute || isManageRoute ? segments[1] : null,
+    organizerToken: token,
+    isRemote: isEventRoute || isManageRoute,
+    isManageRoute,
+  }
 }
 
 function loadPlannerState(): PlannerState {
@@ -153,9 +67,27 @@ function formatDate(value: string) {
   }).format(new Date(value))
 }
 
+async function readApiResponse(response: Response) {
+  const body = (await response.json()) as { event?: PublicEventRecord; error?: string }
+  if (!response.ok) {
+    throw new Error(body.error ?? 'Nie udalo sie zapisac danych.')
+  }
+
+  if (!body.event) {
+    throw new Error('Brak danych wydarzenia w odpowiedzi API.')
+  }
+
+  return body.event
+}
+
 function App() {
+  const [route] = useState(getRoute)
   const [planner, setPlanner] = useState<PlannerState>(loadPlannerState)
-  const [isOrganizer, setIsOrganizer] = useState(true)
+  const [eventRecord, setEventRecord] = useState<PublicEventRecord | null>(null)
+  const [isOrganizerOpen, setIsOrganizerOpen] = useState(!route.isRemote || route.isManageRoute)
+  const [isLoading, setIsLoading] = useState(route.isRemote)
+  const [apiError, setApiError] = useState('')
+  const [apiMessage, setApiMessage] = useState('')
   const [verificationSent, setVerificationSent] = useState(false)
   const [verifiedGuest, setVerifiedGuest] = useState<VerifiedGuest | null>(null)
   const [guestName, setGuestName] = useState('')
@@ -173,9 +105,33 @@ function App() {
     priceHint: '',
   })
 
+  const canManage = !route.isRemote || Boolean(eventRecord?.canManage)
+  const publicUrl = eventRecord?.publicUrl ?? window.location.href
+  const manageUrl = eventRecord?.manageUrl
+
   useEffect(() => {
+    if (route.isRemote) return
     localStorage.setItem(STORAGE_KEY, JSON.stringify(planner))
-  }, [planner])
+  }, [planner, route.isRemote])
+
+  useEffect(() => {
+    if (!route.eventId) return
+
+    const url = new URL(API_URL, window.location.origin)
+    url.searchParams.set('id', route.eventId)
+    if (route.organizerToken) url.searchParams.set('token', route.organizerToken)
+
+    fetch(url)
+      .then(readApiResponse)
+      .then((event) => {
+        setEventRecord(event)
+        setPlanner(event.planner)
+        setSelectedGiftId(event.planner.gifts[0]?.id ?? '')
+        setApiError('')
+      })
+      .catch((error: Error) => setApiError(error.message))
+      .finally(() => setIsLoading(false))
+  }, [route.eventId, route.organizerToken])
 
   const reservationsByGift = useMemo(() => {
     return planner.reservations.reduce<Record<string, Reservation[]>>((groups, reservation) => {
@@ -206,10 +162,38 @@ function App() {
     )
   }, [planner.rsvps])
 
-  const shareUrl = typeof window === 'undefined' ? '' : window.location.href
   const whatsappText = encodeURIComponent(
-    `Czesc! Tu lista prezentow na urodziny: ${planner.event.childName}. Mozesz zobaczyc pomysly i zglosic rezerwacje tutaj: ${shareUrl}`,
+    `Czesc! Tu lista prezentow i potwierdzenie obecnosci na urodziny: ${planner.event.childName}. Link: ${publicUrl}`,
   )
+
+  function applyRemoteEvent(event: PublicEventRecord, message: string) {
+    setEventRecord(event)
+    setPlanner(event.planner)
+    setApiMessage(message)
+    setApiError('')
+  }
+
+  async function callEventApi(action: string, payload: Record<string, unknown>) {
+    const event = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action, ...payload }),
+    }).then(readApiResponse)
+
+    return event
+  }
+
+  async function persistManagedAction(action: string, payload: Record<string, unknown>) {
+    if (!route.eventId || !route.organizerToken) return
+
+    const event = await callEventApi(action, {
+      id: route.eventId,
+      token: route.organizerToken,
+      ...payload,
+    })
+
+    applyRemoteEvent(event, 'Zapisano zmiany online.')
+  }
 
   function getGiftState(giftId: string) {
     const giftReservations = reservationsByGift[giftId] ?? []
@@ -231,6 +215,17 @@ function App() {
     }))
   }
 
+  async function saveEventDetails(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!route.isRemote) return
+
+    try {
+      await persistManagedAction('updateEvent', { event: planner.event })
+    } catch (error) {
+      setApiError((error as Error).message)
+    }
+  }
+
   function sendVerification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!guestName.trim() || !guestContact.trim()) return
@@ -244,77 +239,146 @@ function App() {
     })
   }
 
-  function addGift(event: FormEvent<HTMLFormElement>) {
+  async function createOnlineEvent() {
+    try {
+      setApiMessage('Tworze wydarzenie online...')
+      const event = await callEventApi('create', { planner })
+      if (event.manageUrl) {
+        window.location.href = event.manageUrl
+        return
+      }
+
+      applyRemoteEvent(event, 'Utworzono wydarzenie online.')
+    } catch (error) {
+      setApiError((error as Error).message)
+    }
+  }
+
+  async function addGift(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!newGift.title.trim()) return
 
-    const gift: Gift = {
-      id: createId('gift'),
+    const gift = {
       title: newGift.title.trim(),
       category: newGift.category.trim() || 'Inne',
       details: newGift.details.trim(),
       priceHint: newGift.priceHint.trim(),
     }
 
+    if (route.isRemote) {
+      try {
+        await persistManagedAction('addGift', { gift })
+        setNewGift({ title: '', category: '', details: '', priceHint: '' })
+      } catch (error) {
+        setApiError((error as Error).message)
+      }
+      return
+    }
+
+    const localGift = { ...gift, id: createId('gift') }
     setPlanner((current) => ({
       ...current,
-      gifts: [...current.gifts, gift],
+      gifts: [...current.gifts, localGift],
     }))
     setNewGift({ title: '', category: '', details: '', priceHint: '' })
-    setSelectedGiftId(gift.id)
+    setSelectedGiftId(localGift.id)
   }
 
-  function requestReservation(event: FormEvent<HTMLFormElement>) {
+  async function requestReservation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!verifiedGuest || !selectedGiftId) return
 
-    const reservation: Reservation = {
-      id: createId('reservation'),
+    const reservation = {
       giftId: selectedGiftId,
       guestName: verifiedGuest.name,
       contact: verifiedGuest.contact,
       message: reservationMessage.trim(),
-      status: 'pending',
-      createdAt: new Date().toISOString(),
+    }
+
+    if (route.isRemote && route.eventId) {
+      try {
+        const remoteEvent = await callEventApi('reserveGift', {
+          id: route.eventId,
+          reservation,
+        })
+        applyRemoteEvent(remoteEvent, 'Rezerwacja trafila do zatwierdzenia.')
+        setReservationMessage('')
+      } catch (error) {
+        setApiError((error as Error).message)
+      }
+      return
     }
 
     setPlanner((current) => ({
       ...current,
-      reservations: [...current.reservations, reservation],
+      reservations: [
+        ...current.reservations,
+        {
+          ...reservation,
+          id: createId('reservation'),
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+        },
+      ],
     }))
     setReservationMessage('')
   }
 
-  function submitRsvp(event: FormEvent<HTMLFormElement>) {
+  async function submitRsvp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!verifiedGuest) return
 
-    const now = new Date().toISOString()
+    const rsvp = {
+      guestName: verifiedGuest.name,
+      contact: verifiedGuest.contact,
+      status: attendanceStatus,
+      adults: attendanceStatus === 'yes' ? Math.max(0, attendanceAdults) : 0,
+      children: attendanceStatus === 'yes' ? Math.max(0, attendanceChildren) : 0,
+      note: attendanceNote.trim(),
+    }
+
+    if (route.isRemote && route.eventId) {
+      try {
+        const remoteEvent = await callEventApi('submitRsvp', {
+          id: route.eventId,
+          rsvp,
+        })
+        applyRemoteEvent(remoteEvent, 'Potwierdzenie obecnosci zapisane.')
+        setAttendanceNote('')
+      } catch (error) {
+        setApiError((error as Error).message)
+      }
+      return
+    }
 
     setPlanner((current) => {
-      const existing = current.rsvps.find((rsvp) => rsvp.contact === verifiedGuest.contact)
+      const existing = current.rsvps.find((item) => item.contact === verifiedGuest.contact)
       const nextRsvp: Rsvp = {
+        ...rsvp,
         id: existing?.id ?? createId('rsvp'),
-        guestName: verifiedGuest.name,
-        contact: verifiedGuest.contact,
-        status: attendanceStatus,
-        adults: attendanceStatus === 'yes' ? Math.max(0, attendanceAdults) : 0,
-        children: attendanceStatus === 'yes' ? Math.max(0, attendanceChildren) : 0,
-        note: attendanceNote.trim(),
-        updatedAt: now,
+        updatedAt: new Date().toISOString(),
       }
 
       return {
         ...current,
         rsvps: existing
-          ? current.rsvps.map((rsvp) => (rsvp.id === existing.id ? nextRsvp : rsvp))
+          ? current.rsvps.map((item) => (item.id === existing.id ? nextRsvp : item))
           : [...current.rsvps, nextRsvp],
       }
     })
     setAttendanceNote('')
   }
 
-  function updateReservationStatus(reservationId: string, status: ReservationStatus) {
+  async function updateReservationStatus(reservationId: string, status: ReservationStatus) {
+    if (route.isRemote) {
+      try {
+        await persistManagedAction('updateReservationStatus', { reservationId, status })
+      } catch (error) {
+        setApiError((error as Error).message)
+      }
+      return
+    }
+
     setPlanner((current) => {
       const target = current.reservations.find((reservation) => reservation.id === reservationId)
 
@@ -352,10 +416,24 @@ function App() {
     setAttendanceChildren(1)
     setAttendanceNote('')
     setSelectedGiftId(initialState.gifts[0]?.id ?? '')
+    setApiMessage('')
+    setApiError('')
   }
 
-  async function copyShareLink() {
-    await navigator.clipboard.writeText(shareUrl)
+  async function copyShareLink(value = publicUrl) {
+    await navigator.clipboard.writeText(value)
+    setApiMessage('Skopiowano link.')
+  }
+
+  if (isLoading) {
+    return (
+      <main className="app-shell">
+        <section className="panel">
+          <p className="eyebrow">Prezentownik MVP</p>
+          <h1>Laduje wydarzenie...</h1>
+        </section>
+      </main>
+    )
   }
 
   return (
@@ -365,20 +443,31 @@ function App() {
           <p className="eyebrow">Prezentownik MVP</p>
           <h1>Prosty planner prezentow i urodzin dla grupy rodzicow.</h1>
           <p>
-            Organizator opisuje wydarzenie i pomysly na prezenty, rodzice potwierdzaja
-            tozsamosc, a rezerwacje trafiaja do zatwierdzenia.
+            Organizator tworzy wydarzenie, udostepnia link rodzicom, a RSVP i rezerwacje
+            zapisują sie we wspolnej bazie Netlify Blobs.
           </p>
           <div className="hero-actions">
             <a className="button primary" href="#guest">
               Zglos rezerwacje
             </a>
-            <a className="button secondary" href="#organizer">
-              Panel organizatora
-            </a>
+            {canManage ? (
+              <a className="button secondary" href="#organizer">
+                Panel organizatora
+              </a>
+            ) : null}
+            {!route.isRemote ? (
+              <button className="button secondary" type="button" onClick={createOnlineEvent}>
+                Utworz wydarzenie online
+              </button>
+            ) : null}
           </div>
+          {apiMessage ? <p className="status-message">{apiMessage}</p> : null}
+          {apiError ? <p className="error-message">{apiError}</p> : null}
         </div>
         <div className="event-card">
-          <span className="card-label">Najblizsze wydarzenie</span>
+          <span className="card-label">
+            {route.isRemote ? 'Wydarzenie online' : 'Demo lokalne'}
+          </span>
           <h2>Urodziny: {planner.event.childName}</h2>
           <p>{formatDate(planner.event.date)}</p>
           <p>{planner.event.place}</p>
@@ -398,9 +487,9 @@ function App() {
           <p>{planner.event.notes}</p>
           <div className="share-box">
             <span>Link dla rodzicow</span>
-            <code>{shareUrl}</code>
+            <code>{publicUrl}</code>
             <div className="inline-actions">
-              <button className="button secondary" type="button" onClick={copyShareLink}>
+              <button className="button secondary" type="button" onClick={() => copyShareLink()}>
                 Kopiuj link
               </button>
               <a
@@ -413,14 +502,27 @@ function App() {
               </a>
             </div>
           </div>
+          {manageUrl ? (
+            <div className="share-box">
+              <span>Prywatny link organizatora</span>
+              <code>{manageUrl}</code>
+              <button
+                className="button secondary"
+                type="button"
+                onClick={() => copyShareLink(manageUrl)}
+              >
+                Kopiuj link organizatora
+              </button>
+            </div>
+          ) : null}
         </article>
 
         <article className="panel">
-          <p className="eyebrow">Zakres MVP</p>
-          <h2>Najpierw jeden problem: kto co kupuje.</h2>
+          <p className="eyebrow">Netlify Blobs</p>
+          <h2>{route.isRemote ? 'Wspolna lista jest aktywna.' : 'To jest lokalne demo.'}</h2>
           <p>
-            Do listy prezentow dodajemy tez RSVP, czyli potwierdzenie obecnosci. To nadal
-            prosty planner urodzinowy, ale organizator widzi juz aktualna liste gosci.
+            Po kliknieciu "Utworz wydarzenie online" aplikacja zapisze event w Netlify
+            Blobs i wygeneruje osobny link publiczny oraz prywatny link organizatora.
           </p>
         </article>
       </section>
@@ -605,207 +707,218 @@ function App() {
         </div>
       </section>
 
-      <section className="panel organizer-panel" id="organizer">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Panel organizatora</p>
-            <h2>Zarzadzanie wydarzeniem</h2>
+      {canManage ? (
+        <section className="panel organizer-panel" id="organizer">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Panel organizatora</p>
+              <h2>Zarzadzanie wydarzeniem</h2>
+            </div>
+            <button
+              className="button secondary"
+              type="button"
+              onClick={() => setIsOrganizerOpen((value) => !value)}
+            >
+              {isOrganizerOpen ? 'Ukryj panel' : 'Pokaz panel'}
+            </button>
           </div>
-          <button
-            className="button secondary"
-            type="button"
-            onClick={() => setIsOrganizer((value) => !value)}
-          >
-            {isOrganizer ? 'Ukryj panel' : 'Pokaz panel'}
-          </button>
-        </div>
 
-        {isOrganizer ? (
-          <div className="organizer-grid">
-            <form className="form-card">
-              <h3>Szczegoly wydarzenia</h3>
-              <label>
-                Imie dziecka
-                <input
-                  value={planner.event.childName}
-                  onChange={(event) => updateEvent('childName', event.target.value)}
-                />
-              </label>
-              <label>
-                Data i godzina
-                <input
-                  type="datetime-local"
-                  value={planner.event.date}
-                  onChange={(event) => updateEvent('date', event.target.value)}
-                />
-              </label>
-              <label>
-                Miejsce
-                <input
-                  value={planner.event.place}
-                  onChange={(event) => updateEvent('place', event.target.value)}
-                />
-              </label>
-              <label>
-                Temat / krotki opis
-                <input
-                  value={planner.event.theme}
-                  onChange={(event) => updateEvent('theme', event.target.value)}
-                />
-              </label>
-              <label>
-                Preferencje i informacje organizacyjne
-                <textarea
-                  value={planner.event.notes}
-                  onChange={(event) => updateEvent('notes', event.target.value)}
-                />
-              </label>
-            </form>
+          {isOrganizerOpen ? (
+            <div className="organizer-grid">
+              <form className="form-card" onSubmit={saveEventDetails}>
+                <h3>Szczegoly wydarzenia</h3>
+                <label>
+                  Imie dziecka
+                  <input
+                    value={planner.event.childName}
+                    onChange={(event) => updateEvent('childName', event.target.value)}
+                  />
+                </label>
+                <label>
+                  Data i godzina
+                  <input
+                    type="datetime-local"
+                    value={planner.event.date}
+                    onChange={(event) => updateEvent('date', event.target.value)}
+                  />
+                </label>
+                <label>
+                  Miejsce
+                  <input
+                    value={planner.event.place}
+                    onChange={(event) => updateEvent('place', event.target.value)}
+                  />
+                </label>
+                <label>
+                  Temat / krotki opis
+                  <input
+                    value={planner.event.theme}
+                    onChange={(event) => updateEvent('theme', event.target.value)}
+                  />
+                </label>
+                <label>
+                  Preferencje i informacje organizacyjne
+                  <textarea
+                    value={planner.event.notes}
+                    onChange={(event) => updateEvent('notes', event.target.value)}
+                  />
+                </label>
+                {route.isRemote ? (
+                  <button className="button primary" type="submit">
+                    Zapisz szczegoly online
+                  </button>
+                ) : null}
+              </form>
 
-            <form className="form-card" onSubmit={addGift}>
-              <h3>Dodaj prezent</h3>
-              <label>
-                Nazwa
-                <input
-                  value={newGift.title}
-                  onChange={(event) => setNewGift({ ...newGift, title: event.target.value })}
-                  placeholder="np. Gra planszowa"
-                />
-              </label>
-              <label>
-                Kategoria
-                <input
-                  value={newGift.category}
-                  onChange={(event) => setNewGift({ ...newGift, category: event.target.value })}
-                  placeholder="np. Gry"
-                />
-              </label>
-              <label>
-                Szczegoly
-                <textarea
-                  value={newGift.details}
-                  onChange={(event) => setNewGift({ ...newGift, details: event.target.value })}
-                  placeholder="Co warto wiedziec przed zakupem?"
-                />
-              </label>
-              <label>
-                Budzet orientacyjny
-                <input
-                  value={newGift.priceHint}
-                  onChange={(event) => setNewGift({ ...newGift, priceHint: event.target.value })}
-                  placeholder="np. 50-90 zl"
-                />
-              </label>
-              <button className="button primary" type="submit">
-                Dodaj do listy
-              </button>
-            </form>
+              <form className="form-card" onSubmit={addGift}>
+                <h3>Dodaj prezent</h3>
+                <label>
+                  Nazwa
+                  <input
+                    value={newGift.title}
+                    onChange={(event) => setNewGift({ ...newGift, title: event.target.value })}
+                    placeholder="np. Gra planszowa"
+                  />
+                </label>
+                <label>
+                  Kategoria
+                  <input
+                    value={newGift.category}
+                    onChange={(event) => setNewGift({ ...newGift, category: event.target.value })}
+                    placeholder="np. Gry"
+                  />
+                </label>
+                <label>
+                  Szczegoly
+                  <textarea
+                    value={newGift.details}
+                    onChange={(event) => setNewGift({ ...newGift, details: event.target.value })}
+                    placeholder="Co warto wiedziec przed zakupem?"
+                  />
+                </label>
+                <label>
+                  Budzet orientacyjny
+                  <input
+                    value={newGift.priceHint}
+                    onChange={(event) =>
+                      setNewGift({ ...newGift, priceHint: event.target.value })
+                    }
+                    placeholder="np. 50-90 zl"
+                  />
+                </label>
+                <button className="button primary" type="submit">
+                  Dodaj do listy
+                </button>
+              </form>
 
-            <div className="form-card approvals">
-              <h3>Zgloszenia do zatwierdzenia</h3>
-              {pendingReservations.length ? (
-                pendingReservations.map((reservation) => {
-                  const gift = planner.gifts.find((item) => item.id === reservation.giftId)
+              <div className="form-card approvals">
+                <h3>Zgloszenia do zatwierdzenia</h3>
+                {pendingReservations.length ? (
+                  pendingReservations.map((reservation) => {
+                    const gift = planner.gifts.find((item) => item.id === reservation.giftId)
 
-                  return (
-                    <article className="approval-card" key={reservation.id}>
-                      <p className="gift-meta">{gift?.title}</p>
-                      <h4>{reservation.guestName}</h4>
-                      <p>{reservation.contact}</p>
-                      {reservation.message ? <p>{reservation.message}</p> : null}
-                      <div className="inline-actions">
-                        <button
-                          className="button primary"
-                          type="button"
-                          onClick={() => updateReservationStatus(reservation.id, 'approved')}
-                        >
-                          Zatwierdz
-                        </button>
-                        <button
-                          className="button secondary"
-                          type="button"
-                          onClick={() => updateReservationStatus(reservation.id, 'rejected')}
-                        >
-                          Odrzuc
-                        </button>
-                      </div>
-                    </article>
-                  )
-                })
-              ) : (
-                <p>Brak oczekujacych zgloszen.</p>
-              )}
-            </div>
+                    return (
+                      <article className="approval-card" key={reservation.id}>
+                        <p className="gift-meta">{gift?.title}</p>
+                        <h4>{reservation.guestName}</h4>
+                        <p>{reservation.contact}</p>
+                        {reservation.message ? <p>{reservation.message}</p> : null}
+                        <div className="inline-actions">
+                          <button
+                            className="button primary"
+                            type="button"
+                            onClick={() => updateReservationStatus(reservation.id, 'approved')}
+                          >
+                            Zatwierdz
+                          </button>
+                          <button
+                            className="button secondary"
+                            type="button"
+                            onClick={() => updateReservationStatus(reservation.id, 'rejected')}
+                          >
+                            Odrzuc
+                          </button>
+                        </div>
+                      </article>
+                    )
+                  })
+                ) : (
+                  <p>Brak oczekujacych zgloszen.</p>
+                )}
+              </div>
 
-            <div className="form-card approvals">
-              <h3>Zatwierdzone rezerwacje</h3>
-              {approvedReservations.length ? (
-                approvedReservations.map((reservation) => {
-                  const gift = planner.gifts.find((item) => item.id === reservation.giftId)
+              <div className="form-card approvals">
+                <h3>Zatwierdzone rezerwacje</h3>
+                {approvedReservations.length ? (
+                  approvedReservations.map((reservation) => {
+                    const gift = planner.gifts.find((item) => item.id === reservation.giftId)
 
-                  return (
-                    <article className="approval-card" key={reservation.id}>
-                      <p className="gift-meta">{gift?.title}</p>
-                      <h4>{reservation.guestName}</h4>
-                      <p>{reservation.contact}</p>
-                      <div className="inline-actions">
-                        <button
-                          className="button secondary"
-                          type="button"
-                          onClick={() => updateReservationStatus(reservation.id, 'bought')}
-                        >
-                          Oznacz jako kupiony
-                        </button>
-                      </div>
-                    </article>
-                  )
-                })
-              ) : (
-                <p>Jeszcze nie ma zatwierdzonych rezerwacji.</p>
-              )}
-            </div>
+                    return (
+                      <article className="approval-card" key={reservation.id}>
+                        <p className="gift-meta">{gift?.title}</p>
+                        <h4>{reservation.guestName}</h4>
+                        <p>{reservation.contact}</p>
+                        <div className="inline-actions">
+                          <button
+                            className="button secondary"
+                            type="button"
+                            onClick={() => updateReservationStatus(reservation.id, 'bought')}
+                          >
+                            Oznacz jako kupiony
+                          </button>
+                        </div>
+                      </article>
+                    )
+                  })
+                ) : (
+                  <p>Jeszcze nie ma zatwierdzonych rezerwacji.</p>
+                )}
+              </div>
 
-            <div className="form-card approvals full-width">
-              <h3>Lista obecnosci</h3>
-              {planner.rsvps.length ? (
-                <div className="rsvp-list">
-                  {planner.rsvps.map((rsvp) => (
-                    <article className="approval-card" key={rsvp.id}>
-                      <p className={`pill attendance-${rsvp.status}`}>
-                        {rsvp.status === 'yes'
-                          ? 'bedziemy'
-                          : rsvp.status === 'maybe'
-                            ? 'nie wiem'
-                            : 'nie bedzie nas'}
-                      </p>
-                      <h4>{rsvp.guestName}</h4>
-                      <p>{rsvp.contact}</p>
-                      {rsvp.status === 'yes' ? (
-                        <p>
-                          {rsvp.adults} doroslych, {rsvp.children} dzieci
+              <div className="form-card approvals full-width">
+                <h3>Lista obecnosci</h3>
+                {planner.rsvps.length ? (
+                  <div className="rsvp-list">
+                    {planner.rsvps.map((rsvp) => (
+                      <article className="approval-card" key={rsvp.id}>
+                        <p className={`pill attendance-${rsvp.status}`}>
+                          {rsvp.status === 'yes'
+                            ? 'bedziemy'
+                            : rsvp.status === 'maybe'
+                              ? 'nie wiem'
+                              : 'nie bedzie nas'}
                         </p>
-                      ) : null}
-                      {rsvp.note ? <p>{rsvp.note}</p> : null}
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <p>Brak odpowiedzi od gosci.</p>
-              )}
+                        <h4>{rsvp.guestName}</h4>
+                        <p>{rsvp.contact}</p>
+                        {rsvp.status === 'yes' ? (
+                          <p>
+                            {rsvp.adults} doroslych, {rsvp.children} dzieci
+                          </p>
+                        ) : null}
+                        {rsvp.note ? <p>{rsvp.note}</p> : null}
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p>Brak odpowiedzi od gosci.</p>
+                )}
+              </div>
             </div>
-          </div>
-        ) : null}
-      </section>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="footer-panel">
         <p>
-          Dane sa teraz zapisywane lokalnie w przegladarce. Projekt jest przygotowany pod
-          wdrozenie na Netlify; wspolna lista dla wielu osob wymaga kolejnego kroku:
-          Netlify Functions i trwalego magazynu danych.
+          {route.isRemote
+            ? 'To wydarzenie korzysta z Netlify Functions i Netlify Blobs, wiec rodzice widza wspolna liste.'
+            : 'To lokalne demo. Utworz wydarzenie online, zeby zapisac je w Netlify Blobs i dostac linki dla rodzicow.'}
         </p>
-        <button className="button secondary" type="button" onClick={resetDemo}>
-          Przywroc dane demo
-        </button>
+        {!route.isRemote ? (
+          <button className="button secondary" type="button" onClick={resetDemo}>
+            Przywroc dane demo
+          </button>
+        ) : null}
       </section>
     </main>
   )

@@ -44,6 +44,21 @@
   margin-top: 28px;
 }
 
+.status-message,
+.error-message {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--muted);
+  color: var(--text-h);
+  font-size: 15px;
+}
+
+.error-message {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .event-card {
   display: flex;
   flex-direction: column;

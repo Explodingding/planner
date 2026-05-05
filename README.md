@@ -12,8 +12,12 @@ Pierwszy prototyp webowego plannera prezentow i wydarzenia dla grupy rodzicow.
 - zgloszenie rezerwacji prezentu przez rodzica,
 - zatwierdzanie albo odrzucanie rezerwacji przez organizatora,
 - oznaczanie zatwierdzonej rezerwacji jako kupionej,
+- tworzenie wydarzenia online z unikalnym linkiem `/event/:id`,
+- prywatny panel organizatora pod `/manage/:id?token=...`,
+- Netlify Functions jako API,
+- Netlify Blobs jako prosty storage wydarzen,
 - link do udostepnienia i przycisk WhatsApp,
-- zapis danych lokalnie w przegladarce przez `localStorage`.
+- lokalne demo przez `localStorage` na stronie glownej.
 
 ## Uruchomienie
 
@@ -36,12 +40,13 @@ Projekt ma konfiguracje `netlify.toml`.
 Ustawienia deploya:
 
 - build command: `npm run build`,
-- publish directory: `dist`.
+- publish directory: `dist`,
+- functions directory: `netlify/functions`.
 
-Taki deploy wystarczy do pokazania prototypu UI. Wspolna lista dla wielu rodzicow wymaga kolejnego kroku: Netlify Functions oraz magazynu danych, np. Netlify Blobs albo zewnetrznej bazy typu Supabase.
+Po deployu strona glowna dziala jako demo. Klikniecie `Utworz wydarzenie online` zapisuje event w Netlify Blobs i przekierowuje organizatora na prywatny link zarzadzania. Link publiczny mozna udostepnic rodzicom.
 
 ## Notatki produktowe
 
-To jeszcze nie jest wersja produkcyjna. Wysylka e-mail/SMS, konta organizatorow i baza danych sa celowo zastapione symulacja frontendowa, zeby szybko zweryfikowac sam przeplyw MVP.
+To nadal MVP. Wysylka e-mail/SMS jest symulowana frontendowo, a prywatny dostep organizatora opiera sie na tokenie w linku. To wystarcza do pierwszych testow, ale przed szerszym uzyciem warto dodac prawdziwe magic linki i lepsza obsluge konfliktow rownoczesnych zapisow.
 
-Najblizszy krok techniczny po walidacji UI to backend w Netlify Functions z prawdziwymi wydarzeniami, tokenami organizatora, magic linkami i trwalym zapisem obecnosci oraz rezerwacji.
+Najblizszy krok techniczny po walidacji UI to prawdziwe magic linki oraz bezpieczniejsze zapisy z ETag/conditional writes w Netlify Blobs.
