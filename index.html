@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="pl">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -7,6 +7,13 @@
     <title>planner</title>
   </head>
   <body>
+    <!-- Netlify Forms: statyczny szkielet pol wykrywany przy deployu (SPA) -->
+    <form name="propozycje-zmian" data-netlify="true" data-netlify-honeypot="bot-field" hidden>
+      <input type="text" name="tresc" />
+      <input type="text" name="email" />
+      <input type="text" name="strona" />
+      <input name="bot-field" />
+    </form>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { emptyPlanner, initialState } from './demoData'
 import { GiftIdeasGuide } from './components/GiftIdeasGuide'
+import { SuggestionForm } from './components/SuggestionForm'
 import {
   EventSummary,
   GiftList,
@@ -1014,12 +1015,13 @@ function App() {
         </div>
       )}
 
-      <section className="footer-panel glass-panel">
-        <p>
+      <section className="footer-panel glass-panel footer-panel--with-form">
+        <p className="footer-panel-note">
           {route.isRemote
             ? 'Dane wydarzenia: Netlify Functions + Netlify Blobs.'
             : 'Po utworzeniu wydarzenia otrzymasz linki do udostepnienia i zarzadzania.'}
         </p>
+        <SuggestionForm />
       </section>
     </main>
   )
