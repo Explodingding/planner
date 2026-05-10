@@ -24,6 +24,8 @@ export type Gift = {
   title: string
   category: string
   details: string
+  /** Opcjonalny link do oferty (np. sklep). Pusty string = brak linku. */
+  link: string
 }
 
 export type Guest = {

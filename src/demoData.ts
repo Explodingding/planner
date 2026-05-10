@@ -46,18 +46,21 @@ export const initialState: PlannerState = {
       title: 'Zestaw LEGO Friends',
       category: 'Klocki',
       details: 'Najlepiej maly lub sredni zestaw ze zwierzakami albo domkiem.',
+      link: 'https://allegro.pl/listing?string=lego+friends',
     },
     {
       id: 'gift-book',
       title: 'Ksiazka o zwierzetach',
       category: 'Ksiazki',
       details: 'Ilustrowana, dla dzieci 5-6 lat.',
+      link: '',
     },
     {
       id: 'gift-art',
       title: 'Porzadne kredki lub flamastry',
       category: 'Kreatywne',
       details: 'Zestaw do rysowania, najlepiej zmywalny.',
+      link: '',
     },
   ],
   reservations: [

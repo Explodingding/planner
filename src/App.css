@@ -435,6 +435,24 @@
   align-items: flex-start;
 }
 
+.gift-title {
+  margin: 0;
+  font-size: inherit;
+  line-height: 1.25;
+}
+
+.gift-title-link {
+  color: inherit;
+  text-decoration: none;
+  background: linear-gradient(currentColor, currentColor) 0 100% / 0 2px no-repeat;
+  transition: background-size 0.2s ease;
+}
+
+.gift-title-link:hover {
+  background-size: 100% 2px;
+  color: var(--accent-2);
+}
+
 .gift-meta,
 .reservation-note {
   color: var(--text);

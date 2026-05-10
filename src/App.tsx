@@ -79,7 +79,10 @@ function loadPlannerDraft(): PlannerState {
     return {
       event: parsed.event ?? emptyPlanner.event,
       guestList: parsed.guestList ?? [],
-      gifts: parsed.gifts ?? [],
+      gifts: (parsed.gifts ?? []).map((gift) => ({
+        ...gift,
+        link: typeof gift.link === 'string' ? gift.link : '',
+      })),
       reservations: [],
       rsvps: [],
     }
@@ -174,6 +177,7 @@ function App() {
     title: '',
     category: GIFT_CATEGORIES[0],
     details: '',
+    link: '',
   })
 
   const canManage = !route.isRemote || Boolean(eventRecord?.canManage)
@@ -422,12 +426,13 @@ function App() {
       title: newGift.title.trim(),
       category: newGift.category.trim() || 'Inne',
       details: newGift.details.trim(),
+      link: newGift.link.trim(),
     }
 
     if (route.isRemote) {
       try {
         await persistManagedAction({ action: 'addGift', gift })
-        setNewGift({ title: '', category: GIFT_CATEGORIES[0], details: '' })
+        setNewGift({ title: '', category: GIFT_CATEGORIES[0], details: '', link: '' })
       } catch (error) {
         setApiError((error as Error).message)
       }
@@ -439,7 +444,7 @@ function App() {
       ...current,
       gifts: [...current.gifts, localGift],
     }))
-    setNewGift({ title: '', category: GIFT_CATEGORIES[0], details: '' })
+    setNewGift({ title: '', category: GIFT_CATEGORIES[0], details: '', link: '' })
     setSelectedGiftId(localGift.id)
   }
 

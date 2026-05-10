@@ -161,7 +161,20 @@ export function GiftList({
           <article className="gift-card" key={gift.id}>
             <div>
               <div className="gift-title-row">
-                <h3>{gift.title}</h3>
+                <h3 className="gift-title">
+                  {gift.link ? (
+                    <a
+                      className="gift-title-link"
+                      href={gift.link}
+                      rel="noreferrer noopener"
+                      target="_blank"
+                    >
+                      {gift.title}
+                    </a>
+                  ) : (
+                    gift.title
+                  )}
+                </h3>
                 <span className={`pill state-${getGiftState(gift.id)}`}>
                   {getGiftState(gift.id)}
                 </span>
@@ -579,6 +592,16 @@ export function OrganizerPanel({
             value={newGift.details}
             onChange={(event) => onNewGiftChange({ ...newGift, details: event.target.value })}
             placeholder="Co warto wiedziec przed zakupem?"
+          />
+        </label>
+        <label>
+          Link do oferty (opcjonalnie)
+          <input
+            type="url"
+            inputMode="url"
+            value={newGift.link}
+            onChange={(event) => onNewGiftChange({ ...newGift, link: event.target.value })}
+            placeholder="https://allegro.pl/oferta/..."
           />
         </label>
         <button className="button primary" type="submit">

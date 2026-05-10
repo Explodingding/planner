@@ -120,11 +120,51 @@ function validateEventDetails(event: EventDetails): EventDetails {
   }
 }
 
+function safeGiftLink(value: unknown): string {
+  const text = cleanText(value, 2000)
+  if (!text) return ''
+
+  try {
+    const url = text.includes('://') ? new URL(text) : new URL(`https://${text}`)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return ''
+    return url.href
+  } catch {
+    return ''
+  }
+}
+
+function validateGiftLink(value: unknown): string {
+  const text = cleanText(value, 2000)
+  if (!text) return ''
+
+  try {
+    const url = text.includes('://') ? new URL(text) : new URL(`https://${text}`)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw new ApiError('Link musi uzyc adresu http lub https.', 400)
+    }
+    return url.href
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    throw new ApiError('Nieprawidlowy link. Wklej pelny adres oferty ze sklepu.', 400)
+  }
+}
+
 function validateGift(gift: Omit<Gift, 'id'>): Omit<Gift, 'id'> {
   return {
     title: requireText(gift.title, 'Nazwa prezentu', 120),
     category: requireText(gift.category, 'Kategoria prezentu', 80),
     details: cleanText(gift.details, 700),
+    link: validateGiftLink(gift.link),
+  }
+}
+
+function normalizeGiftFromStorage(raw: Partial<Gift>): Gift {
+  return {
+    id: raw.id || createId('gift'),
+    title: cleanText(raw.title, 120) || 'Prezent',
+    category: cleanText(raw.category, 80) || 'Inne',
+    details: cleanText(raw.details, 700),
+    link: safeGiftLink(raw.link),
   }
 }
 
@@ -260,7 +300,9 @@ function normalizeRecord(record: Partial<EventRecord>): EventRecord {
     planner: {
       event: validateEventDetails(record.planner?.event ?? emptyEvent()),
       guestList: validateGuestList(record.planner?.guestList ?? []),
-      gifts: record.planner?.gifts ?? [],
+      gifts: (record.planner?.gifts ?? []).map((item) =>
+        normalizeGiftFromStorage(item as Partial<Gift>),
+      ),
       reservations: record.planner?.reservations ?? [],
       rsvps: record.planner?.rsvps ?? [],
     },
