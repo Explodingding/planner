@@ -169,29 +169,55 @@ function normalizeGiftFromStorage(raw: Partial<Gift>): Gift {
 }
 
 function validateGuest(guest: Guest): Guest {
+  const name = requireText(guest.name, 'Imie goscia', 120)
+  const contact = cleanText(guest.contact, 160)
+  if (digitsOnly(contact).length < 9) {
+    throw new ApiError('Kazdy gosc musi miec numer telefonu (min. 9 cyfr).', 400)
+  }
+
   return {
     id: guest.id || createId('guest'),
-    name: requireText(guest.name, 'Imie goscia', 120),
-    contact: cleanText(guest.contact, 160),
+    name,
+    contact,
   }
 }
 
-function validateGuestList(guestList: Guest[] = []) {
-  return guestList
-    .slice(0, MAX_GUESTS)
-    .map(validateGuest)
-    .filter((guest, index, list) => {
-      const contact = normalizeLookup(guest.contact)
-      const name = normalizeLookup(guest.name)
+function normalizedPhoneKey(value: string) {
+  const d = digitsOnly(value)
+  if (d.length < 9) return d
+  let x = d
+  if (x.startsWith('48') && x.length >= 11) x = x.slice(2)
+  if (x.startsWith('0') && x.length >= 10) x = x.slice(1)
+  return x.slice(-9)
+}
 
-      return (
-        list.findIndex((item) =>
-          contact
-            ? normalizeLookup(item.contact) === contact
-            : normalizeLookup(item.name) === name,
-        ) === index
-      )
-    })
+function validateGuestList(guestList: Guest[] = []) {
+  const drafted = guestList.slice(0, MAX_GUESTS).map((guest) => ({
+    id: guest.id || createId('guest'),
+    name: cleanText(guest.name, 120),
+    contact: cleanText(guest.contact, 160),
+  }))
+
+  const complete = drafted.filter((guest) => guest.name && digitsOnly(guest.contact).length >= 9)
+
+  return complete
+    .map(validateGuest)
+    .filter((guest, index, list) => list.findIndex((item) => normalizedPhoneKey(item.contact) === normalizedPhoneKey(guest.contact)) === index)
+}
+
+/** Odczyt z Blobs: bez walidacji telefonu, zeby stare rekordy nadal sie wczytywaly. */
+function normalizeGuestListSoft(raw: unknown): Guest[] {
+  if (!Array.isArray(raw)) return []
+
+  return raw.slice(0, MAX_GUESTS).map((item) => {
+    const g = item as Partial<Guest>
+    const idRaw = typeof g.id === 'string' ? cleanText(g.id, 80) : ''
+    return {
+      id: idRaw || createId('guest'),
+      name: cleanText(g.name, 120) || 'Gosc',
+      contact: cleanText(g.contact, 160),
+    }
+  })
 }
 
 function validatePlanner(planner: PlannerState): PlannerState {
@@ -263,11 +289,7 @@ function digitsOnly(value: string) {
   return value.replace(/\D/g, '')
 }
 
-function contactsEquivalent(a: string, b: string): boolean {
-  const compactA = normalizeLookup(a)
-  const compactB = normalizeLookup(b)
-  if (compactA && compactB && compactA === compactB) return true
-
+function phonesEquivalent(a: string, b: string): boolean {
   const da = digitsOnly(a)
   const db = digitsOnly(b)
   if (da.length < 9 || db.length < 9) return false
@@ -287,26 +309,38 @@ function contactsEquivalent(a: string, b: string): boolean {
   return false
 }
 
+/** To samo co na froncie przy laczeniu odpowiedzi RSVP / rezerwacji (email lub telefon). */
+function contactsEquivalent(a: string, b: string): boolean {
+  const compactA = normalizeLookup(a)
+  const compactB = normalizeLookup(b)
+  if (compactA && compactB && compactA === compactB) return true
+  return phonesEquivalent(a, b)
+}
+
+function maskPhoneForPublic(raw: string): string {
+  const d = digitsOnly(raw)
+  if (d.length < 4) return ''
+  return `*** *** ${d.slice(-3)}`
+}
+
 function requireListedGuest(record: EventRecord, guestName: string, contact: string) {
-  const contactClean = requireText(contact, 'Kontakt', 160)
+  const contactClean = cleanText(contact, 160)
 
   if (!record.planner.guestList.length) {
     return {
       name: requireText(guestName, 'Imie rodzica', 120),
-      contact: contactClean,
+      contact: requireText(contact, 'Kontakt', 160),
     }
   }
 
-  const normalizedName = normalizeLookup(guestName)
-  const guest = record.planner.guestList.find((item) => {
-    if (item.contact?.trim()) {
-      return contactsEquivalent(item.contact, contactClean)
-    }
-    return Boolean(normalizedName) && normalizeLookup(item.name) === normalizedName
-  })
+  if (digitsOnly(contactClean).length < 9) {
+    throw new ApiError('Podaj numer telefonu z listy zaproszonych (min. 9 cyfr).', 400)
+  }
+
+  const guest = record.planner.guestList.find((item) => phonesEquivalent(item.contact, contactClean))
 
   if (!guest) {
-    throw new ApiError('Nie znaleziono tej osoby na liscie zaproszonych.', 403)
+    throw new ApiError('Nie znaleziono tego numeru na liscie zaproszonych.', 403)
   }
 
   return {
@@ -328,7 +362,7 @@ function normalizeRecord(record: Partial<EventRecord>): EventRecord {
     lastUpdatedBy: record.lastUpdatedBy || record.createdBy || 'legacy-organizer',
     planner: {
       event: validateEventDetails(record.planner?.event ?? emptyEvent()),
-      guestList: validateGuestList(record.planner?.guestList ?? []),
+      guestList: normalizeGuestListSoft(record.planner?.guestList),
       gifts: (record.planner?.gifts ?? []).map((item) =>
         normalizeGiftFromStorage(item as Partial<Gift>),
       ),
@@ -363,7 +397,7 @@ function stripPrivateData(record: EventRecord, req: Request, canManage: boolean)
         ...record.planner,
         guestList: record.planner.guestList.map((guest) => ({
           ...guest,
-          contact: '',
+          contact: maskPhoneForPublic(guest.contact),
         })),
         reservations: record.planner.reservations.map((reservation) => ({
           ...reservation,
@@ -474,7 +508,7 @@ async function handlePublicWrite(req: Request, body: EventApiRequest) {
   }
 
   const payload = validateRsvp(record, body.rsvp)
-  const existing = record.planner.rsvps.find((rsvp) => rsvp.contact === payload.contact)
+  const existing = record.planner.rsvps.find((rsvp) => contactsEquivalent(rsvp.contact, payload.contact))
   const rsvp: Rsvp = {
     ...payload,
     id: existing?.id ?? createId('rsvp'),

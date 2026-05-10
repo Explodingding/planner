@@ -31,6 +31,7 @@ export type Gift = {
 export type Guest = {
   id: string
   name: string
+  /** Numer telefonu gościa; przy zapisie listy wymagane min. 9 cyfr. W widoku publicznym może być zwrócony w formie maski. */
   contact: string
 }
 

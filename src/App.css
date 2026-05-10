@@ -201,17 +201,17 @@
   font-size: 15px;
 }
 
-.guest-list-public {
-  list-style: none;
+.guest-list-public-wrap {
   margin: 0 0 20px;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px;
+  overflow-x: auto;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--card);
 }
 
 .guest-list-public.empty {
   display: block;
+  margin: 0 0 20px;
 }
 
 .guest-list-public.empty p {
@@ -223,16 +223,94 @@
   line-height: 1.5;
 }
 
-.guest-list-item {
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  background: var(--card);
+.guest-list-public-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
 }
 
-.guest-list-name {
-  font-weight: 700;
-  color: var(--text-h);
+.guest-list-public-table th,
+.guest-list-public-table td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.guest-list-public-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.guest-list-public-table th {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+  background: var(--muted);
+}
+
+.guest-list-phone-cell {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.guest-list-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.guest-list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.guest-list-editor-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.guest-list-editor-table th,
+.guest-list-editor-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.guest-list-editor-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.guest-list-editor-table th {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+  background: var(--muted);
+}
+
+.guest-list-editor-table input {
+  margin: 0;
+}
+
+.guest-list-editor-actions {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.guest-list-remove {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.guest-list-empty-hint {
+  margin: 0;
 }
 
 .tab-panel .rsvp-overview.panel {
@@ -548,6 +626,21 @@
   color: #b51665;
 }
 
+.rsvp-public-tile.attendance-tile-yes {
+  background: linear-gradient(155deg, rgba(223, 252, 245, 0.72), var(--card));
+  border-color: rgba(8, 127, 115, 0.38);
+}
+
+.rsvp-public-tile.attendance-tile-maybe {
+  background: linear-gradient(155deg, rgba(255, 241, 184, 0.55), var(--card));
+  border-color: rgba(138, 93, 0, 0.32);
+}
+
+.rsvp-public-tile.attendance-tile-no {
+  background: linear-gradient(155deg, rgba(255, 225, 240, 0.62), var(--card));
+  border-color: rgba(181, 22, 101, 0.3);
+}
+
 .rsvp-overview {
   display: grid;
   gap: 18px;
@@ -597,8 +690,16 @@
   letter-spacing: 0;
 }
 
-.guest-list-card textarea {
-  min-height: 168px;
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 label {

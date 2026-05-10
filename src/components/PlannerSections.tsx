@@ -3,6 +3,7 @@ import type {
   AttendanceStatus,
   EventDetails,
   Gift,
+  Guest,
   PlannerState,
   Reservation,
   ReservationStatus,
@@ -10,6 +11,14 @@ import type {
   VerifiedGuest,
 } from '../types'
 import { GIFT_CATEGORIES, ORGANIZER_SERVICES } from '../constants'
+
+function guestDigits(value: string) {
+  return value.replace(/\D/g, '')
+}
+
+function newGuestRow(): Guest {
+  return { id: `guest-${crypto.randomUUID()}`, name: '', contact: '' }
+}
 
 type RsvpSummary = {
   yes: number
@@ -130,13 +139,24 @@ export function PublicGuestList({ planner }: { planner: PlannerState }) {
   }
 
   return (
-    <ul className="guest-list-public">
-      {planner.guestList.map((guest) => (
-        <li className="guest-list-item" key={guest.id}>
-          <span className="guest-list-name">{guest.name}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="guest-list-public-wrap">
+      <table className="guest-list-public-table">
+        <thead>
+          <tr>
+            <th scope="col">Nazwa</th>
+            <th scope="col">Telefon</th>
+          </tr>
+        </thead>
+        <tbody>
+          {planner.guestList.map((guest) => (
+            <tr key={guest.id}>
+              <td>{guest.name}</td>
+              <td className="guest-list-phone-cell">{guest.contact?.trim() || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -243,7 +263,7 @@ export function RsvpSummaryPanel({
       <div className="rsvp-list public-rsvp-list">
         {planner.rsvps.length ? (
           planner.rsvps.map((rsvp) => (
-            <article className="approval-card" key={rsvp.id}>
+            <article className={`approval-card rsvp-public-tile attendance-tile-${rsvp.status}`} key={rsvp.id}>
               <p className={`pill attendance-${rsvp.status}`}>
                 {rsvp.status === 'yes'
                   ? 'bedziemy'
@@ -321,10 +341,8 @@ export function GuestForms({
   onSubmitRsvp: (event: FormEvent<HTMLFormElement>) => void
 }) {
   const usesGuestList = planner.guestList.length > 0
-  const listNeedsName = planner.guestList.some((g) => !g.contact?.trim())
-  const nameRequired = !usesGuestList || listNeedsName
 
-  const contactField = (
+  const contactFieldOpen = (
     <label>
       E-mail lub telefon
       <input
@@ -341,10 +359,26 @@ export function GuestForms({
     </label>
   )
 
+  const contactFieldListed = (
+    <label>
+      Numer telefonu z listy
+      <input
+        type="tel"
+        name="guest-contact"
+        autoComplete="off"
+        inputMode="tel"
+        enterKeyHint="done"
+        value={guestContact}
+        onChange={(event) => onGuestContactChange(event.target.value)}
+        placeholder="np. 500 600 700"
+        required
+      />
+    </label>
+  )
+
   const nameField = (
     <label>
       Imie lub opis
-      {nameRequired ? null : <span className="label-optional"> (opcjonalnie)</span>}
       <input
         type="text"
         name="guest-display-name"
@@ -354,7 +388,7 @@ export function GuestForms({
         value={guestName}
         onChange={(event) => onGuestNameChange(event.target.value)}
         placeholder="np. Mama Janka"
-        required={nameRequired}
+        required
       />
     </label>
   )
@@ -365,24 +399,16 @@ export function GuestForms({
         <h3>1. Potwierdz osobe</h3>
         {usesGuestList ? (
           <p className="form-hint">
-            Przy liscie zaproszonych potwierdzamy po <strong>e-mailu lub telefonie</strong> z listy
-            organizatora, zeby uniknac pomylek przy wpisywaniu imion.
-            {listNeedsName
-              ? ' Czesc gosci ma tylko imie na liscie — wtedy dopasujemy po imieniu i kontakcie.'
-              : null}
+            Przy liscie zaproszonych potwierdzamy wylacznie po <strong>numerze telefonu</strong> z listy
+            organizatora. Imie wyswietlimy automatycznie po dopasowaniu numeru.
           </p>
         ) : (
           <p className="form-hint">Podaj imie oraz e-mail lub telefon.</p>
         )}
-        {usesGuestList ? (
-          <>
-            {contactField}
-            {nameField}
-          </>
-        ) : (
+        {usesGuestList ? contactFieldListed : (
           <>
             {nameField}
-            {contactField}
+            {contactFieldOpen}
           </>
         )}
         <label className="spam-field">
@@ -400,8 +426,8 @@ export function GuestForms({
         {verificationSent ? (
           <div className="verification-box">
             <p>
-              Kliknij ponizej, aby zapisac potwierdzenie na podstawie wpisanego kontaktu
-              {nameRequired ? ' i imienia' : ''}.
+              Kliknij ponizej, aby zapisac potwierdzenie na podstawie wpisanego
+              {usesGuestList ? ' numeru telefonu' : ' kontaktu i imienia'}.
             </p>
             <button className="button secondary" type="button" onClick={onConfirmVerification}>
               Potwierdz tozsamosc
@@ -513,8 +539,7 @@ export function OrganizerPanel({
   isRemote,
   onEventChange,
   onSaveEventDetails,
-  guestListText,
-  onGuestListTextChange,
+  onGuestListChange,
   onSaveGuestList,
   onNewGiftChange,
   onAddGift,
@@ -528,8 +553,7 @@ export function OrganizerPanel({
   isRemote: boolean
   onEventChange: (field: keyof EventDetails, value: string) => void
   onSaveEventDetails: (event: FormEvent<HTMLFormElement>) => void
-  guestListText: string
-  onGuestListTextChange: (value: string) => void
+  onGuestListChange: (guestList: Guest[]) => void
   onSaveGuestList: (event: FormEvent<HTMLFormElement>) => void
   onNewGiftChange: (gift: Omit<Gift, 'id'>) => void
   onAddGift: (event: FormEvent<HTMLFormElement>) => void
@@ -594,20 +618,85 @@ export function OrganizerPanel({
       <form className="form-card guest-list-card" onSubmit={onSaveGuestList}>
         <h3>Lista zaproszonych gosci</h3>
         <p className="form-hint">
-          Wklej wiele osob naraz, po jednej w linii. Format: imie/opis, kontakt.
-          Kontakt moze byc pusty.
+          Kazdy wiersz: nazwa (np. rodzic dziecka) oraz telefon z min. 9 cyframi. Puste lub
+          niepelne wiersze sa pomijane przy zapisie online.
         </p>
-        <label>
-          Goscie
-          <textarea
-            value={guestListText}
-            onChange={(event) => onGuestListTextChange(event.target.value)}
-            placeholder={'Mama Janka, mama.janka@example.com\nTata Zosi, 500600700\nRodzice Franka'}
-          />
-        </label>
+        <div className="guest-list-editor">
+          <div className="guest-list-toolbar">
+            <button
+              className="button secondary"
+              type="button"
+              onClick={() => onGuestListChange([...planner.guestList, newGuestRow()])}
+            >
+              Dodaj goscia
+            </button>
+          </div>
+          {planner.guestList.length ? (
+            <table className="guest-list-editor-table">
+              <thead>
+                <tr>
+                  <th scope="col">Nazwa</th>
+                  <th scope="col">Telefon</th>
+                  <th scope="col" className="guest-list-editor-actions">
+                    <span className="visually-hidden">Akcje</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {planner.guestList.map((guest) => (
+                  <tr key={guest.id}>
+                    <td>
+                      <input
+                        aria-label="Nazwa goscia"
+                        value={guest.name}
+                        onChange={(event) =>
+                          onGuestListChange(
+                            planner.guestList.map((row) =>
+                              row.id === guest.id ? { ...row, name: event.target.value } : row,
+                            ),
+                          )
+                        }
+                        placeholder="np. Mama Janka"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        aria-label="Telefon goscia"
+                        type="tel"
+                        inputMode="tel"
+                        value={guest.contact}
+                        onChange={(event) =>
+                          onGuestListChange(
+                            planner.guestList.map((row) =>
+                              row.id === guest.id ? { ...row, contact: event.target.value } : row,
+                            ),
+                          )
+                        }
+                        placeholder="np. 500 600 700"
+                      />
+                    </td>
+                    <td className="guest-list-editor-actions">
+                      <button
+                        className="button secondary guest-list-remove"
+                        type="button"
+                        onClick={() => onGuestListChange(planner.guestList.filter((row) => row.id !== guest.id))}
+                      >
+                        Usun
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="form-hint guest-list-empty-hint">
+              Lista pusta — rodzice podaja imie i kontakt bez sprawdzania wzgledem listy.
+            </p>
+          )}
+        </div>
         <p className="form-hint">
-          Dodano {planner.guestList.length} pozycji. Jesli lista jest pusta, rodzice moga
-          potwierdzac sie tak jak dotychczas.
+          Wierszy w edytorze: {planner.guestList.length}. Gotowych do zapisu (nazwa + telefon):{' '}
+          {planner.guestList.filter((g) => g.name.trim() && guestDigits(g.contact).length >= 9).length}.
         </p>
         <button className="button primary" type="submit">
           {isRemote ? 'Zapisz liste gosci online' : 'Zastosuj liste gosci'}

@@ -104,47 +104,11 @@ function formatDate(value: string) {
   }).format(new Date(value))
 }
 
-function formatGuestList(guestList: Guest[]) {
-  return guestList.map((guest) => [guest.name, guest.contact].filter(Boolean).join(', ')).join('\n')
-}
-
-function parseGuestList(value: string, existingGuests: Guest[] = []) {
-  return value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 120)
-    .map((line) => {
-      const [rawName, ...contactParts] = line.split(',')
-      const name = rawName.trim()
-      const contact = contactParts.join(',').trim()
-      const existing = existingGuests.find(
-        (guest) =>
-          guest.name.trim().toLowerCase() === name.toLowerCase() &&
-          guest.contact.trim().toLowerCase() === contact.toLowerCase(),
-      )
-
-      return {
-        id: existing?.id ?? createId('guest'),
-        name,
-        contact,
-      }
-    })
-}
-
-function normalizeLookup(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, '')
-}
-
 function digitsOnly(value: string) {
   return value.replace(/\D/g, '')
 }
 
-function contactsMatch(a: string, b: string): boolean {
-  const compactA = normalizeLookup(a)
-  const compactB = normalizeLookup(b)
-  if (compactA && compactB && compactA === compactB) return true
-
+function phonesMatch(a: string, b: string): boolean {
   const da = digitsOnly(a)
   const db = digitsOnly(b)
   if (da.length < 9 || db.length < 9) return false
@@ -162,6 +126,14 @@ function contactsMatch(a: string, b: string): boolean {
   if (sa.length >= 9 && sb.length >= 9 && sa.slice(-9) === sb.slice(-9)) return true
 
   return false
+}
+
+function guestListRowComplete(guest: Guest): boolean {
+  return Boolean(guest.name.trim() && digitsOnly(guest.contact).length >= 9)
+}
+
+function sanitizeGuestListForApi(list: Guest[]): Guest[] {
+  return list.filter(guestListRowComplete)
 }
 
 async function readApiResponse(response: Response) {
@@ -200,7 +172,6 @@ function App() {
   const [attendanceChildren, setAttendanceChildren] = useState(1)
   const [attendanceNote, setAttendanceNote] = useState('')
   const [spamTrap, setSpamTrap] = useState('')
-  const [guestListText, setGuestListText] = useState(() => formatGuestList(planner.guestList))
   const [newGift, setNewGift] = useState<Omit<Gift, 'id'>>({
     title: '',
     category: GIFT_CATEGORIES[0],
@@ -229,7 +200,6 @@ function App() {
       .then((event) => {
         setEventRecord(event)
         setPlanner(event.planner)
-        setGuestListText(formatGuestList(event.planner.guestList))
         setSelectedGiftId(event.planner.gifts[0]?.id ?? '')
         setApiError('')
       })
@@ -273,7 +243,6 @@ function App() {
   function applyRemoteEvent(event: PublicEventRecord, message: string) {
     setEventRecord(event)
     setPlanner(event.planner)
-    setGuestListText(formatGuestList(event.planner.guestList))
     setApiMessage(message)
     setApiError('')
     setCreateValidationErrors([])
@@ -322,18 +291,14 @@ function App() {
     }))
   }
 
-  function updateGuestListDraft(value: string) {
-    setGuestListText(value)
-    setPlanner((current) => ({
-      ...current,
-      guestList: parseGuestList(value, current.guestList),
-    }))
+  function updateGuestListFromEditor(next: Guest[]) {
+    setCreateValidationErrors([])
+    setPlanner((current) => ({ ...current, guestList: next }))
   }
 
   async function saveGuestList(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const guestList = parseGuestList(guestListText, planner.guestList)
-    setPlanner((current) => ({ ...current, guestList }))
+    const guestList = sanitizeGuestListForApi(planner.guestList)
 
     if (!route.isRemote) {
       setApiMessage('Lista gosci zostanie zapisana przy tworzeniu wydarzenia online.')
@@ -389,11 +354,9 @@ function App() {
   function sendVerification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const hasGuestList = planner.guestList.length > 0
-    const listNeedsName = planner.guestList.some((g) => !g.contact?.trim())
 
     if (!guestContact.trim()) return
     if (!hasGuestList && !guestName.trim()) return
-    if (hasGuestList && listNeedsName && !guestName.trim()) return
 
     setVerificationSent(true)
   }
@@ -404,7 +367,9 @@ function App() {
 
     if (!contactInput) {
       setApiMessage('')
-      setApiError('Podaj adres e-mail lub numer telefonu.')
+      setApiError(
+        guestList.length ? 'Podaj numer telefonu z listy.' : 'Podaj adres e-mail lub numer telefonu.',
+      )
       return
     }
 
@@ -422,18 +387,18 @@ function App() {
       return
     }
 
-    const normalizedName = normalizeLookup(guestName)
-    const listedGuest = guestList.find((guest) => {
-      if (guest.contact?.trim()) {
-        return contactsMatch(guest.contact, contactInput)
-      }
-      return Boolean(normalizedName) && normalizeLookup(guest.name) === normalizedName
-    })
+    if (digitsOnly(contactInput).length < 9) {
+      setApiMessage('')
+      setApiError('Podaj numer telefonu z listy (min. 9 cyfr).')
+      return
+    }
+
+    const listedGuest = guestList.find((guest) => phonesMatch(guest.contact, contactInput))
 
     if (!listedGuest) {
       setApiMessage('')
       setApiError(
-        'Nie znalezlismy tego kontaktu na liscie gosci. Sprawdz e-mail lub telefon albo skontaktuj sie z organizatorem.',
+        'Nie znalezlismy tego numeru na liscie gosci. Sprawdz wpis albo skontaktuj sie z organizatorem.',
       )
       return
     }
@@ -455,7 +420,7 @@ function App() {
         action: 'create',
         planner: {
           ...planner,
-          guestList: parseGuestList(guestListText, planner.guestList),
+          guestList: sanitizeGuestListForApi(planner.guestList),
         },
         organizerName,
         organizerContact,
@@ -565,14 +530,12 @@ function App() {
 
   function loadDemoData() {
     setPlanner(initialState)
-    setGuestListText(formatGuestList(initialState.guestList))
     setApiMessage('Wczytano dane przykladowe do wersji roboczej.')
     setApiError('')
   }
 
   function resetDraft() {
     setPlanner(emptyPlanner)
-    setGuestListText('')
     setApiMessage('')
     setApiError('')
     localStorage.removeItem(DRAFT_STORAGE_KEY)
@@ -780,8 +743,7 @@ function App() {
                 isRemote={false}
                 onEventChange={updateEvent}
                 onSaveEventDetails={(event) => event.preventDefault()}
-                guestListText={guestListText}
-                onGuestListTextChange={updateGuestListDraft}
+                onGuestListChange={updateGuestListFromEditor}
                 onSaveGuestList={saveGuestList}
                 onNewGiftChange={setNewGift}
                 onAddGift={addGift}
@@ -815,7 +777,7 @@ function App() {
                 <div>
                   <p className="eyebrow">Krok 2</p>
                   <h2>Lista zaproszonych</h2>
-                  <p>Wklej gosci hurtowo. Mozesz tez zostawic liste pusta.</p>
+                  <p>Dodaj gosci w tabeli (nazwa i telefon). Mozesz tez zostawic liste pusta.</p>
                 </div>
               </div>
               <OrganizerPanel
@@ -826,8 +788,7 @@ function App() {
                 isRemote={false}
                 onEventChange={updateEvent}
                 onSaveEventDetails={(event) => event.preventDefault()}
-                guestListText={guestListText}
-                onGuestListTextChange={updateGuestListDraft}
+                onGuestListChange={updateGuestListFromEditor}
                 onSaveGuestList={saveGuestList}
                 onNewGiftChange={setNewGift}
                 onAddGift={addGift}
@@ -873,8 +834,7 @@ function App() {
                 isRemote={false}
                 onEventChange={updateEvent}
                 onSaveEventDetails={(event) => event.preventDefault()}
-                guestListText={guestListText}
-                onGuestListTextChange={updateGuestListDraft}
+                onGuestListChange={updateGuestListFromEditor}
                 onSaveGuestList={saveGuestList}
                 onNewGiftChange={setNewGift}
                 onAddGift={addGift}
@@ -935,7 +895,7 @@ function App() {
                 <div>
                   <p className="eyebrow">Goscie</p>
                   <h2>Lista zaproszonych i obecnosc</h2>
-                  <p>Imiona z listy organizatora sa widoczne dla wszystkich. Kontakty z listy nie sa udostepniane publicznie.</p>
+                  <p>Imiona z listy sa widoczne dla zaproszonych. Numery telefonow pokazujemy w przyblizeniu (ostatnie cyfry); pelne numery widzi tylko organizator.</p>
                 </div>
                 {verifiedGuest ? (
                   <span className="pill success">Zalogowano jako {verifiedGuest.name}</span>
@@ -1040,8 +1000,7 @@ function App() {
                 isRemote={route.isRemote}
                 onEventChange={updateEvent}
                 onSaveEventDetails={saveEventDetails}
-                guestListText={guestListText}
-                onGuestListTextChange={updateGuestListDraft}
+                onGuestListChange={updateGuestListFromEditor}
                 onSaveGuestList={saveGuestList}
                 onNewGiftChange={setNewGift}
                 onAddGift={addGift}

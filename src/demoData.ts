@@ -27,17 +27,17 @@ export const initialState: PlannerState = {
     {
       id: 'guest-janek',
       name: 'Mama Janka',
-      contact: 'mama.janka@example.com',
+      contact: '500111222',
     },
     {
       id: 'guest-hania',
       name: 'Rodzice Hani',
-      contact: 'hania@example.com',
+      contact: '+48 501 333 444',
     },
     {
       id: 'guest-franek',
       name: 'Rodzice Franka',
-      contact: '',
+      contact: '502555666',
     },
   ],
   gifts: [
@@ -68,7 +68,7 @@ export const initialState: PlannerState = {
       id: 'reservation-demo',
       giftId: 'gift-book',
       guestName: 'Mama Janka',
-      contact: 'mama.janka@example.com',
+      contact: '500111222',
       message: 'Moge kupic ksiazke i dorzuce kartke od Janka.',
       status: 'pending',
       createdAt: new Date().toISOString(),
@@ -78,7 +78,7 @@ export const initialState: PlannerState = {
     {
       id: 'rsvp-demo-yes',
       guestName: 'Mama Janka',
-      contact: 'mama.janka@example.com',
+      contact: '500111222',
       status: 'yes',
       adults: 1,
       children: 1,
@@ -88,7 +88,7 @@ export const initialState: PlannerState = {
     {
       id: 'rsvp-demo-maybe',
       guestName: 'Rodzice Hani',
-      contact: 'hania@example.com',
+      contact: '+48501333444',
       status: 'maybe',
       adults: 1,
       children: 1,
