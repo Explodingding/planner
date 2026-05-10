@@ -133,7 +133,35 @@ function parseGuestList(value: string, existingGuests: Guest[] = []) {
 }
 
 function normalizeLookup(value: string) {
-  return value.trim().toLowerCase()
+  return value.trim().toLowerCase().replace(/\s+/g, '')
+}
+
+function digitsOnly(value: string) {
+  return value.replace(/\D/g, '')
+}
+
+function contactsMatch(a: string, b: string): boolean {
+  const compactA = normalizeLookup(a)
+  const compactB = normalizeLookup(b)
+  if (compactA && compactB && compactA === compactB) return true
+
+  const da = digitsOnly(a)
+  const db = digitsOnly(b)
+  if (da.length < 9 || db.length < 9) return false
+  if (da === db) return true
+
+  const stripPl = (d: string) => {
+    if (d.startsWith('48') && d.length >= 11) return d.slice(2)
+    if (d.startsWith('0') && d.length >= 10) return d.slice(1)
+    return d
+  }
+
+  const sa = stripPl(da)
+  const sb = stripPl(db)
+  if (sa === sb) return true
+  if (sa.length >= 9 && sb.length >= 9 && sa.slice(-9) === sb.slice(-9)) return true
+
+  return false
 }
 
 async function readApiResponse(response: Response) {
@@ -360,30 +388,59 @@ function App() {
 
   function sendVerification(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!guestName.trim() || !guestContact.trim()) return
+    const hasGuestList = planner.guestList.length > 0
+    const listNeedsName = planner.guestList.some((g) => !g.contact?.trim())
+
+    if (!guestContact.trim()) return
+    if (!hasGuestList && !guestName.trim()) return
+    if (hasGuestList && listNeedsName && !guestName.trim()) return
+
     setVerificationSent(true)
   }
 
   function confirmVerification() {
     const guestList = planner.guestList
-    const normalizedName = normalizeLookup(guestName)
-    const normalizedContact = normalizeLookup(guestContact)
-    const listedGuest = guestList.find((guest) => {
-      const guestNameMatch = normalizeLookup(guest.name) === normalizedName
-      const guestContactMatch = guest.contact && normalizeLookup(guest.contact) === normalizedContact
+    const contactInput = guestContact.trim()
 
-      return guestContactMatch || guestNameMatch
+    if (!contactInput) {
+      setApiMessage('')
+      setApiError('Podaj adres e-mail lub numer telefonu.')
+      return
+    }
+
+    if (!guestList.length) {
+      if (!guestName.trim()) {
+        setApiMessage('')
+        setApiError('Podaj takze imie lub opis.')
+        return
+      }
+      setVerifiedGuest({
+        name: guestName.trim(),
+        contact: contactInput,
+      })
+      setApiError('')
+      return
+    }
+
+    const normalizedName = normalizeLookup(guestName)
+    const listedGuest = guestList.find((guest) => {
+      if (guest.contact?.trim()) {
+        return contactsMatch(guest.contact, contactInput)
+      }
+      return Boolean(normalizedName) && normalizeLookup(guest.name) === normalizedName
     })
 
-    if (guestList.length && !listedGuest) {
+    if (!listedGuest) {
       setApiMessage('')
-      setApiError('Nie znalezlismy tej osoby na liscie gosci. Sprawdz dane albo skontaktuj sie z organizatorem.')
+      setApiError(
+        'Nie znalezlismy tego kontaktu na liscie gosci. Sprawdz e-mail lub telefon albo skontaktuj sie z organizatorem.',
+      )
       return
     }
 
     setVerifiedGuest({
-      name: listedGuest?.name ?? guestName.trim(),
-      contact: listedGuest?.contact || guestContact.trim(),
+      name: listedGuest.name,
+      contact: listedGuest.contact?.trim() || contactInput,
     })
     setApiError('')
   }

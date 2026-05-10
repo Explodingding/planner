@@ -180,7 +180,20 @@ export function GiftList({
                 </span>
               </div>
               <p className="gift-meta">{gift.category}</p>
-              <p>{gift.details}</p>
+              {gift.details ? <p>{gift.details}</p> : null}
+              {gift.link ? (
+                <div className="gift-link-block">
+                  <span className="gift-link-block-label">Link do oferty</span>
+                  <a
+                    className="gift-link-block-url"
+                    href={gift.link}
+                    rel="noreferrer noopener"
+                    target="_blank"
+                  >
+                    {gift.link}
+                  </a>
+                </div>
+              ) : null}
             </div>
             {approved ? (
               <p className="reservation-note">Zarezerwowane przez: {approved.guestName}</p>
@@ -307,34 +320,71 @@ export function GuestForms({
   onRequestReservation: (event: FormEvent<HTMLFormElement>) => void
   onSubmitRsvp: (event: FormEvent<HTMLFormElement>) => void
 }) {
+  const usesGuestList = planner.guestList.length > 0
+  const listNeedsName = planner.guestList.some((g) => !g.contact?.trim())
+  const nameRequired = !usesGuestList || listNeedsName
+
+  const contactField = (
+    <label>
+      E-mail lub telefon
+      <input
+        type="text"
+        name="guest-contact"
+        autoComplete="off"
+        inputMode="text"
+        enterKeyHint="next"
+        value={guestContact}
+        onChange={(event) => onGuestContactChange(event.target.value)}
+        placeholder="np. anna@example.com lub 500 600 700"
+        required
+      />
+    </label>
+  )
+
+  const nameField = (
+    <label>
+      Imie lub opis
+      {nameRequired ? null : <span className="label-optional"> (opcjonalnie)</span>}
+      <input
+        type="text"
+        name="guest-display-name"
+        autoComplete="name"
+        inputMode="text"
+        enterKeyHint="done"
+        value={guestName}
+        onChange={(event) => onGuestNameChange(event.target.value)}
+        placeholder="np. Mama Janka"
+        required={nameRequired}
+      />
+    </label>
+  )
+
   return (
     <div className="grid two-columns reservation-area">
       <form className="form-card" onSubmit={onSendVerification}>
         <h3>1. Potwierdz osobe</h3>
-        {planner.guestList.length ? (
+        {usesGuestList ? (
           <p className="form-hint">
-            Organizator dodal liste zaproszonych. Wpisz dane zgodne z lista, aby
-            zarezerwowac prezent lub potwierdzic obecnosc.
+            Przy liscie zaproszonych potwierdzamy po <strong>e-mailu lub telefonie</strong> z listy
+            organizatora, zeby uniknac pomylek przy wpisywaniu imion.
+            {listNeedsName
+              ? ' Czesc gosci ma tylko imie na liscie — wtedy dopasujemy po imieniu i kontakcie.'
+              : null}
           </p>
-        ) : null}
-        <label>
-          Imie lub opis
-          <input
-            value={guestName}
-            onChange={(event) => onGuestNameChange(event.target.value)}
-            placeholder="np. Mama Janka"
-            required
-          />
-        </label>
-        <label>
-          E-mail lub telefon
-          <input
-            value={guestContact}
-            onChange={(event) => onGuestContactChange(event.target.value)}
-            placeholder="np. anna@example.com"
-            required
-          />
-        </label>
+        ) : (
+          <p className="form-hint">Podaj imie oraz e-mail lub telefon.</p>
+        )}
+        {usesGuestList ? (
+          <>
+            {contactField}
+            {nameField}
+          </>
+        ) : (
+          <>
+            {nameField}
+            {contactField}
+          </>
+        )}
         <label className="spam-field">
           Website
           <input
@@ -349,9 +399,12 @@ export function GuestForms({
         </button>
         {verificationSent ? (
           <div className="verification-box">
-            <p>W tej wersji link/kod jest uproszczony. Kliknij, aby potwierdzic osobe.</p>
+            <p>
+              Kliknij ponizej, aby zapisac potwierdzenie na podstawie wpisanego kontaktu
+              {nameRequired ? ' i imienia' : ''}.
+            </p>
             <button className="button secondary" type="button" onClick={onConfirmVerification}>
-              Potwierdz kod
+              Potwierdz tozsamosc
             </button>
           </div>
         ) : null}

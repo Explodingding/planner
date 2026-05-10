@@ -256,24 +256,53 @@ function clampNumber(value: unknown, min: number, max: number) {
 }
 
 function normalizeLookup(value: string) {
-  return value.trim().toLowerCase()
+  return value.trim().toLowerCase().replace(/\s+/g, '')
+}
+
+function digitsOnly(value: string) {
+  return value.replace(/\D/g, '')
+}
+
+function contactsEquivalent(a: string, b: string): boolean {
+  const compactA = normalizeLookup(a)
+  const compactB = normalizeLookup(b)
+  if (compactA && compactB && compactA === compactB) return true
+
+  const da = digitsOnly(a)
+  const db = digitsOnly(b)
+  if (da.length < 9 || db.length < 9) return false
+  if (da === db) return true
+
+  const stripPl = (d: string) => {
+    if (d.startsWith('48') && d.length >= 11) return d.slice(2)
+    if (d.startsWith('0') && d.length >= 10) return d.slice(1)
+    return d
+  }
+
+  const sa = stripPl(da)
+  const sb = stripPl(db)
+  if (sa === sb) return true
+  if (sa.length >= 9 && sb.length >= 9 && sa.slice(-9) === sb.slice(-9)) return true
+
+  return false
 }
 
 function requireListedGuest(record: EventRecord, guestName: string, contact: string) {
-  const payload = {
-    name: requireText(guestName, 'Imie rodzica', 120),
-    contact: requireText(contact, 'Kontakt', 160),
+  const contactClean = requireText(contact, 'Kontakt', 160)
+
+  if (!record.planner.guestList.length) {
+    return {
+      name: requireText(guestName, 'Imie rodzica', 120),
+      contact: contactClean,
+    }
   }
 
-  if (!record.planner.guestList.length) return payload
-
-  const normalizedName = normalizeLookup(payload.name)
-  const normalizedContact = normalizeLookup(payload.contact)
+  const normalizedName = normalizeLookup(guestName)
   const guest = record.planner.guestList.find((item) => {
-    const contactMatch = item.contact && normalizeLookup(item.contact) === normalizedContact
-    const nameMatch = normalizeLookup(item.name) === normalizedName
-
-    return contactMatch || nameMatch
+    if (item.contact?.trim()) {
+      return contactsEquivalent(item.contact, contactClean)
+    }
+    return Boolean(normalizedName) && normalizeLookup(item.name) === normalizedName
   })
 
   if (!guest) {
@@ -282,7 +311,7 @@ function requireListedGuest(record: EventRecord, guestName: string, contact: str
 
   return {
     name: guest.name,
-    contact: guest.contact || payload.contact,
+    contact: guest.contact?.trim() ? guest.contact.trim() : contactClean,
   }
 }
 
