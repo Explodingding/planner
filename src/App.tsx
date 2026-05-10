@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { emptyPlanner, initialState } from './demoData'
+import { GiftIdeasGuide } from './components/GiftIdeasGuide'
 import {
   EventSummary,
   GiftList,
@@ -77,7 +78,7 @@ function loadPlannerDraft(): PlannerState {
     const parsed = JSON.parse(stored) as Partial<PlannerState>
 
     return {
-      event: parsed.event ?? emptyPlanner.event,
+      event: { ...emptyPlanner.event, ...(parsed.event ?? {}) },
       guestList: parsed.guestList ?? [],
       gifts: (parsed.gifts ?? []).map((gift) => ({
         ...gift,
@@ -817,6 +818,7 @@ function App() {
                   <p>Dodaj pierwsze pozycje, rodzice zobacza je na publicznym linku.</p>
                 </div>
               </div>
+              <GiftIdeasGuide event={planner.event} />
               {planner.gifts.length ? (
                 <GiftList
                   planner={planner}
@@ -950,6 +952,7 @@ function App() {
                   <p>Po potwierdzeniu osoby mozesz zglosic rezerwacje w zakladce Goscie.</p>
                 </div>
               </div>
+              <GiftIdeasGuide event={planner.event} />
               {planner.gifts.length ? (
                 <GiftList
                   planner={planner}

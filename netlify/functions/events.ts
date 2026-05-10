@@ -117,6 +117,10 @@ function validateEventDetails(event: EventDetails): EventDetails {
     place: requireText(event.place, 'Miejsce wydarzenia', 160),
     theme: cleanText(event.theme, 160),
     notes: cleanText(event.notes, 1200),
+    giftClothingSizes: cleanText(event.giftClothingSizes, 600),
+    giftColorNotes: cleanText(event.giftColorNotes, 600),
+    giftMediaFavorites: cleanText(event.giftMediaFavorites, 600),
+    giftWishListNotes: cleanText(event.giftWishListNotes, 1200),
   }
 }
 
@@ -381,6 +385,10 @@ function emptyEvent(): EventDetails {
     place: 'Do ustalenia',
     theme: '',
     notes: '',
+    giftClothingSizes: '',
+    giftColorNotes: '',
+    giftMediaFavorites: '',
+    giftWishListNotes: '',
   }
 }
 

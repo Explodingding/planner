@@ -232,8 +232,10 @@ export function GiftList({
           (reservation) => reservation.status === 'approved' || reservation.status === 'bought',
         )
 
+        const state = getGiftState(gift.id)
+
         return (
-          <article className="gift-card" key={gift.id}>
+          <article className={`gift-card gift-card--${state}`} key={gift.id}>
             <div>
               <div className="gift-title-row">
                 <h3 className="gift-title">
@@ -250,9 +252,7 @@ export function GiftList({
                     gift.title
                   )}
                 </h3>
-                <span className={`pill state-${getGiftState(gift.id)}`}>
-                  {getGiftState(gift.id)}
-                </span>
+                <span className={`pill state-${state}`}>{state}</span>
               </div>
               <p className="gift-meta">{gift.category}</p>
               {gift.details ? <p>{gift.details}</p> : null}
@@ -659,6 +659,42 @@ export function OrganizerPanel({
           <textarea
             value={planner.event.notes}
             onChange={(event) => onEventChange('notes', event.target.value)}
+          />
+        </label>
+        <p className="form-hint gift-guide-form-intro">
+          Ponizsze pola sa widoczne na zakladce <strong>Prezenty</strong> dla zaproszonych — pomagaja dobrac
+          prezent niezaleznie od listy pomyslow.
+        </p>
+        <label>
+          Rozmiary ubrań i obuwia
+          <textarea
+            value={planner.event.giftClothingSizes}
+            onChange={(event) => onEventChange('giftClothingSizes', event.target.value)}
+            placeholder="np. rozmiar ubran 116, buty 29, czapka obwod"
+          />
+        </label>
+        <label>
+          Ulubione kolory i styl
+          <textarea
+            value={planner.event.giftColorNotes}
+            onChange={(event) => onEventChange('giftColorNotes', event.target.value)}
+            placeholder="np. pastelowe roze i zielen, bez neonow"
+          />
+        </label>
+        <label>
+          Bajki, ksiazki, postacie (motyw)
+          <textarea
+            value={planner.event.giftMediaFavorites}
+            onChange={(event) => onEventChange('giftMediaFavorites', event.target.value)}
+            placeholder="np. ulubiona bajka, seria ksiazek, bohaterowie"
+          />
+        </label>
+        <label>
+          Lista zyczen / list do Mikolaja
+          <textarea
+            value={planner.event.giftWishListNotes}
+            onChange={(event) => onEventChange('giftWishListNotes', event.target.value)}
+            placeholder="np. krotki list zyczen dziecka albo ogolne kierunki na prezent"
           />
         </label>
         {isRemote ? (

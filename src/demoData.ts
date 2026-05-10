@@ -7,6 +7,10 @@ export const emptyPlanner: PlannerState = {
     place: '',
     theme: '',
     notes: '',
+    giftClothingSizes: '',
+    giftColorNotes: '',
+    giftMediaFavorites: '',
+    giftWishListNotes: '',
   },
   guestList: [],
   gifts: [],
@@ -22,6 +26,11 @@ export const initialState: PlannerState = {
     theme: 'Urodziny w klimacie zwierzakow i klockow',
     notes:
       'Tosia lubi LEGO Friends, puzzle, kredki i ksiazki o zwierzetach. Prosimy unikac pluszakow, bo mamy ich juz bardzo duzo.',
+    giftClothingSizes: 'Ubrania ok. 116, buty 29–30, czapka 54.',
+    giftColorNotes: 'Róż, mięta, pastelowe odcienie. Unikać neonów.',
+    giftMediaFavorites: 'Kraina Lodu, Myszka Miki, seria „Zwierzaki z zoo”.',
+    giftWishListNotes:
+      'LEGO Friends (mały zestaw), kredki akwarelowe, puzzle 100 elementów, książka z naklejkami o zwierzętach.',
   },
   guestList: [
     {

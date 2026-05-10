@@ -17,6 +17,14 @@ export type EventDetails = {
   place: string
   theme: string
   notes: string
+  /** Rozmiary ubrań (np. buty, czapka) — wskazówka dla gości kupujących prezenty. */
+  giftClothingSizes: string
+  /** Ulubione kolory, styl. */
+  giftColorNotes: string
+  /** Motyw: ulubione bajki, książki, postacie. */
+  giftMediaFavorites: string
+  /** Lista życzeń dziecka / „list do Mikołaja”. */
+  giftWishListNotes: string
 }
 
 export type Gift = {
