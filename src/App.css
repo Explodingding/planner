@@ -254,6 +254,25 @@
   color: var(--text);
 }
 
+.guest-list-public-table tbody tr.guest-list-rsvp-row--yes > td {
+  background: linear-gradient(155deg, rgba(223, 252, 245, 0.72), rgba(223, 252, 245, 0.28));
+  border-bottom-color: rgba(8, 127, 115, 0.22);
+}
+
+.guest-list-public-table tbody tr.guest-list-rsvp-row--maybe > td {
+  background: linear-gradient(155deg, rgba(255, 241, 184, 0.58), rgba(255, 241, 184, 0.2));
+  border-bottom-color: rgba(138, 93, 0, 0.2);
+}
+
+.guest-list-public-table tbody tr.guest-list-rsvp-row--no > td {
+  background: linear-gradient(155deg, rgba(255, 225, 240, 0.65), rgba(255, 225, 240, 0.25));
+  border-bottom-color: rgba(181, 22, 101, 0.18);
+}
+
+.guest-list-public-table tbody tr.guest-list-rsvp-row--awaiting > td {
+  background: var(--card);
+}
+
 .guest-list-editor {
   display: grid;
   gap: 12px;
