@@ -1,19 +1,22 @@
 :root {
-  --text: #625b71;
-  --text-h: #171321;
-  --bg: #fff8f1;
-  --panel: rgba(255, 255, 255, 0.82);
+  --text: #5b5370;
+  --text-h: #24123f;
+  --bg: #fff7fd;
+  --panel: rgba(255, 255, 255, 0.9);
   --card: #ffffff;
-  --muted: #f5efe7;
-  --input: #fffdf9;
-  --border: #eadfce;
-  --code-bg: #f5efe7;
-  --accent: #df5f37;
+  --muted: #f4edff;
+  --input: #fffaff;
+  --border: #eadcff;
+  --code-bg: #f4edff;
+  --accent: #ff4fa3;
+  --accent-2: #7c5cff;
+  --accent-3: #16c7b7;
+  --sunny: #ffd166;
   --button-text: #ffffff;
-  --button-secondary: #f5efe7;
+  --button-secondary: #fff0f7;
   --shadow:
-    rgba(67, 43, 25, 0.14) 0 12px 24px -10px, rgba(67, 43, 25, 0.08) 0 4px 10px -6px;
-  --soft-shadow: rgba(67, 43, 25, 0.08) 0 20px 70px -40px;
+    rgba(112, 78, 161, 0.18) 0 12px 24px -10px, rgba(255, 79, 163, 0.12) 0 4px 10px -6px;
+  --soft-shadow: rgba(112, 78, 161, 0.12) 0 20px 70px -40px;
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -45,8 +48,10 @@
 body {
   margin: 0;
   background:
-    radial-gradient(circle at top left, rgba(223, 95, 55, 0.16), transparent 28rem),
-    linear-gradient(180deg, #fff8f1 0%, #f9efe6 100%);
+    radial-gradient(circle at 12% 8%, rgba(255, 209, 102, 0.55), transparent 16rem),
+    radial-gradient(circle at 88% 18%, rgba(22, 199, 183, 0.22), transparent 18rem),
+    radial-gradient(circle at 45% 0%, rgba(255, 79, 163, 0.18), transparent 22rem),
+    linear-gradient(180deg, #fff7fd 0%, #f5f0ff 54%, #eefcff 100%);
 }
 
 h1,

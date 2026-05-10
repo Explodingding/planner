@@ -14,7 +14,6 @@ export type Gift = {
   title: string
   category: string
   details: string
-  priceHint: string
 }
 
 export type Reservation = {

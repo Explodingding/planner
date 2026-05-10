@@ -15,21 +15,18 @@ export const initialState: PlannerState = {
       title: 'Zestaw LEGO Friends',
       category: 'Klocki',
       details: 'Najlepiej maly lub sredni zestaw ze zwierzakami albo domkiem.',
-      priceHint: '60-120 zl',
     },
     {
       id: 'gift-book',
       title: 'Ksiazka o zwierzetach',
       category: 'Ksiazki',
       details: 'Ilustrowana, dla dzieci 5-6 lat.',
-      priceHint: '30-60 zl',
     },
     {
       id: 'gift-art',
       title: 'Porzadne kredki lub flamastry',
       category: 'Kreatywne',
       details: 'Zestaw do rysowania, najlepiej zmywalny.',
-      priceHint: '40-80 zl',
     },
   ],
   reservations: [

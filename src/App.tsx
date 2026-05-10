@@ -14,6 +14,40 @@ import './App.css'
 
 const STORAGE_KEY = 'prezentownik-mvp'
 const API_URL = '/.netlify/functions/events'
+const GIFT_CATEGORIES = [
+  'Klocki',
+  'Ksiazki',
+  'Gry i puzzle',
+  'Kreatywne',
+  'Sport i ruch',
+  'Edukacyjne',
+  'Ubranka i dodatki',
+  'Elektronika dla dzieci',
+  'Inne',
+]
+
+const ORGANIZER_SERVICES = [
+  {
+    title: 'Sale zabaw',
+    description: 'Docelowo: wolne terminy, pakiety urodzinowe i rezerwacja sali z aplikacji.',
+    action: 'Zapytaj o termin',
+  },
+  {
+    title: 'Torty i cukiernie',
+    description: 'Lista lokalnych cukierni, inspiracje tortow i przekierowanie do zamowienia.',
+    action: 'Wybierz cukiernie',
+  },
+  {
+    title: 'Animatorzy',
+    description: 'Animatorzy do domu, ogrodu, sali lub pleneru, z tematami zabaw dla dzieci.',
+    action: 'Znajdz animatora',
+  },
+  {
+    title: 'Dekoracje',
+    description: 'Balony, scianki, girlandy i dekoratorzy, ktorzy przygotuja klimat imprezy.',
+    action: 'Zobacz dekoracje',
+  },
+]
 
 type RouteState = {
   eventId: string | null
@@ -100,9 +134,8 @@ function App() {
   const [attendanceNote, setAttendanceNote] = useState('')
   const [newGift, setNewGift] = useState({
     title: '',
-    category: '',
+    category: GIFT_CATEGORIES[0],
     details: '',
-    priceHint: '',
   })
 
   const canManage = !route.isRemote || Boolean(eventRecord?.canManage)
@@ -262,13 +295,12 @@ function App() {
       title: newGift.title.trim(),
       category: newGift.category.trim() || 'Inne',
       details: newGift.details.trim(),
-      priceHint: newGift.priceHint.trim(),
     }
 
     if (route.isRemote) {
       try {
         await persistManagedAction('addGift', { gift })
-        setNewGift({ title: '', category: '', details: '', priceHint: '' })
+        setNewGift({ title: '', category: GIFT_CATEGORIES[0], details: '' })
       } catch (error) {
         setApiError((error as Error).message)
       }
@@ -280,7 +312,7 @@ function App() {
       ...current,
       gifts: [...current.gifts, localGift],
     }))
-    setNewGift({ title: '', category: '', details: '', priceHint: '' })
+    setNewGift({ title: '', category: GIFT_CATEGORIES[0], details: '' })
     setSelectedGiftId(localGift.id)
   }
 
@@ -441,7 +473,7 @@ function App() {
       <section className="hero-section">
         <div className="hero-copy">
           <p className="eyebrow">Prezentownik MVP</p>
-          <h1>Prosty planner prezentow i urodzin dla grupy rodzicow.</h1>
+          <h1>Kolorowy planner urodzin, prezentow i gosci.</h1>
           <p>
             Organizator tworzy wydarzenie, udostepnia link rodzicom, a RSVP i rezerwacje
             zapisują sie we wspolnej bazie Netlify Blobs.
@@ -553,13 +585,37 @@ function App() {
             <span>odpowiedzi</span>
           </article>
         </div>
+        <div className="rsvp-list public-rsvp-list">
+          {planner.rsvps.length ? (
+            planner.rsvps.map((rsvp) => (
+              <article className="approval-card" key={rsvp.id}>
+                <p className={`pill attendance-${rsvp.status}`}>
+                  {rsvp.status === 'yes'
+                    ? 'bedziemy'
+                    : rsvp.status === 'maybe'
+                      ? 'nie wiem'
+                      : 'nie bedzie nas'}
+                </p>
+                <h4>{rsvp.guestName}</h4>
+                {rsvp.status === 'yes' ? (
+                  <p>
+                    {rsvp.adults} doroslych, {rsvp.children} dzieci
+                  </p>
+                ) : null}
+              </article>
+            ))
+          ) : (
+            <p>Jeszcze nikt nie potwierdzil obecnosci.</p>
+          )}
+        </div>
       </section>
 
       <section className="panel" id="guest">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Widok rodzica</p>
-            <h2>Lista prezentow</h2>
+            <p className="eyebrow">Dla wszystkich zaproszonych</p>
+            <h2>Publiczna lista prezentow</h2>
+            <p>Goscie widza pomysly i moga zglosic rezerwacje po potwierdzeniu osoby.</p>
           </div>
           {verifiedGuest ? (
             <span className="pill success">Zalogowano jako {verifiedGuest.name}</span>
@@ -585,10 +641,7 @@ function App() {
                       {getGiftState(gift.id)}
                     </span>
                   </div>
-                  <p className="gift-meta">
-                    {gift.category}
-                    {gift.priceHint ? ` · ${gift.priceHint}` : ''}
-                  </p>
+                  <p className="gift-meta">{gift.category}</p>
                   <p>{gift.details}</p>
                 </div>
                 {approved ? (
@@ -782,11 +835,16 @@ function App() {
                 </label>
                 <label>
                   Kategoria
-                  <input
+                  <select
                     value={newGift.category}
                     onChange={(event) => setNewGift({ ...newGift, category: event.target.value })}
-                    placeholder="np. Gry"
-                  />
+                  >
+                    {GIFT_CATEGORIES.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label>
                   Szczegoly
@@ -794,16 +852,6 @@ function App() {
                     value={newGift.details}
                     onChange={(event) => setNewGift({ ...newGift, details: event.target.value })}
                     placeholder="Co warto wiedziec przed zakupem?"
-                  />
-                </label>
-                <label>
-                  Budzet orientacyjny
-                  <input
-                    value={newGift.priceHint}
-                    onChange={(event) =>
-                      setNewGift({ ...newGift, priceHint: event.target.value })
-                    }
-                    placeholder="np. 50-90 zl"
                   />
                 </label>
                 <button className="button primary" type="submit">
@@ -902,6 +950,25 @@ function App() {
                 ) : (
                   <p>Brak odpowiedzi od gosci.</p>
                 )}
+              </div>
+
+              <div className="form-card approvals full-width">
+                <h3>Pomoc w organizacji urodzin</h3>
+                <p>
+                  Pierwszy szkic marketplace: lokalne firmy moga byc partnerami aplikacji,
+                  a organizator docelowo wybierze uslugi bez wychodzenia z plannera.
+                </p>
+                <div className="service-grid">
+                  {ORGANIZER_SERVICES.map((service) => (
+                    <article className="service-card" key={service.title}>
+                      <h4>{service.title}</h4>
+                      <p>{service.description}</p>
+                      <button className="button secondary" type="button">
+                        {service.action}
+                      </button>
+                    </article>
+                  ))}
+                </div>
               </div>
             </div>
           ) : null}
