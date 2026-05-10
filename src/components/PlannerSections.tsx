@@ -275,12 +275,19 @@ export function GuestForms({
     <div className="grid two-columns reservation-area">
       <form className="form-card" onSubmit={onSendVerification}>
         <h3>1. Potwierdz osobe</h3>
+        {planner.guestList.length ? (
+          <p className="form-hint">
+            Organizator dodal liste zaproszonych. Wpisz dane zgodne z lista, aby
+            zarezerwowac prezent lub potwierdzic obecnosc.
+          </p>
+        ) : null}
         <label>
           Imie lub opis
           <input
             value={guestName}
             onChange={(event) => onGuestNameChange(event.target.value)}
             placeholder="np. Mama Janka"
+            required
           />
         </label>
         <label>
@@ -289,6 +296,7 @@ export function GuestForms({
             value={guestContact}
             onChange={(event) => onGuestContactChange(event.target.value)}
             placeholder="np. anna@example.com"
+            required
           />
         </label>
         <label className="spam-field">
@@ -398,6 +406,9 @@ export function OrganizerPanel({
   isRemote,
   onEventChange,
   onSaveEventDetails,
+  guestListText,
+  onGuestListTextChange,
+  onSaveGuestList,
   onNewGiftChange,
   onAddGift,
   onReservationStatusChange,
@@ -409,6 +420,9 @@ export function OrganizerPanel({
   isRemote: boolean
   onEventChange: (field: keyof EventDetails, value: string) => void
   onSaveEventDetails: (event: FormEvent<HTMLFormElement>) => void
+  guestListText: string
+  onGuestListTextChange: (value: string) => void
+  onSaveGuestList: (event: FormEvent<HTMLFormElement>) => void
   onNewGiftChange: (gift: Omit<Gift, 'id'>) => void
   onAddGift: (event: FormEvent<HTMLFormElement>) => void
   onReservationStatusChange: (reservationId: string, status: ReservationStatus) => void
@@ -422,6 +436,7 @@ export function OrganizerPanel({
           <input
             value={planner.event.childName}
             onChange={(event) => onEventChange('childName', event.target.value)}
+            required
           />
         </label>
         <label>
@@ -430,6 +445,7 @@ export function OrganizerPanel({
             type="datetime-local"
             value={planner.event.date}
             onChange={(event) => onEventChange('date', event.target.value)}
+            required
           />
         </label>
         <label>
@@ -437,6 +453,7 @@ export function OrganizerPanel({
           <input
             value={planner.event.place}
             onChange={(event) => onEventChange('place', event.target.value)}
+            required
           />
         </label>
         <label>
@@ -458,6 +475,29 @@ export function OrganizerPanel({
             Zapisz szczegoly online
           </button>
         ) : null}
+      </form>
+
+      <form className="form-card guest-list-card" onSubmit={onSaveGuestList}>
+        <h3>Lista zaproszonych gosci</h3>
+        <p className="form-hint">
+          Wklej wiele osob naraz, po jednej w linii. Format: imie/opis, kontakt.
+          Kontakt moze byc pusty.
+        </p>
+        <label>
+          Goscie
+          <textarea
+            value={guestListText}
+            onChange={(event) => onGuestListTextChange(event.target.value)}
+            placeholder={'Mama Janka, mama.janka@example.com\nTata Zosi, 500600700\nRodzice Franka'}
+          />
+        </label>
+        <p className="form-hint">
+          Dodano {planner.guestList.length} pozycji. Jesli lista jest pusta, rodzice moga
+          potwierdzac sie tak jak dotychczas.
+        </p>
+        <button className="button primary" type="submit">
+          {isRemote ? 'Zapisz liste gosci online' : 'Zastosuj liste gosci'}
+        </button>
       </form>
 
       <form className="form-card" onSubmit={onAddGift}>

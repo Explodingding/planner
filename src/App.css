@@ -74,6 +74,22 @@
   color: #991b1b;
 }
 
+.validation-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid #fecaca;
+  border-radius: 18px;
+  background: #fff1f2;
+  color: #991b1b;
+}
+
+.validation-list ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
 .event-card {
   display: flex;
   flex-direction: column;
@@ -310,6 +326,16 @@
   flex-direction: column;
   gap: 16px;
   padding: 20px;
+}
+
+.form-hint {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.guest-list-card textarea {
+  min-height: 168px;
 }
 
 label {

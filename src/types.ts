@@ -5,6 +5,7 @@ export type EventVisibility = 'public_link'
 export type ApiAction =
   | 'create'
   | 'updateEvent'
+  | 'updateGuestList'
   | 'addGift'
   | 'reserveGift'
   | 'submitRsvp'
@@ -23,6 +24,12 @@ export type Gift = {
   title: string
   category: string
   details: string
+}
+
+export type Guest = {
+  id: string
+  name: string
+  contact: string
 }
 
 export type Reservation = {
@@ -48,6 +55,7 @@ export type Rsvp = {
 
 export type PlannerState = {
   event: EventDetails
+  guestList: Guest[]
   gifts: Gift[]
   reservations: Reservation[]
   rsvps: Rsvp[]
@@ -102,6 +110,12 @@ export type ManagedEventRequest =
       id: string
       token: string
       gift: Omit<Gift, 'id'>
+    }
+  | {
+      action: 'updateGuestList'
+      id: string
+      token: string
+      guestList: Guest[]
     }
   | {
       action: 'updateReservationStatus'

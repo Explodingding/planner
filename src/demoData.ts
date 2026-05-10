@@ -8,6 +8,7 @@ export const emptyPlanner: PlannerState = {
     theme: '',
     notes: '',
   },
+  guestList: [],
   gifts: [],
   reservations: [],
   rsvps: [],
@@ -22,6 +23,23 @@ export const initialState: PlannerState = {
     notes:
       'Tosia lubi LEGO Friends, puzzle, kredki i ksiazki o zwierzetach. Prosimy unikac pluszakow, bo mamy ich juz bardzo duzo.',
   },
+  guestList: [
+    {
+      id: 'guest-janek',
+      name: 'Mama Janka',
+      contact: 'mama.janka@example.com',
+    },
+    {
+      id: 'guest-hania',
+      name: 'Rodzice Hani',
+      contact: 'hania@example.com',
+    },
+    {
+      id: 'guest-franek',
+      name: 'Rodzice Franka',
+      contact: '',
+    },
+  ],
   gifts: [
     {
       id: 'gift-lego',

@@ -15,6 +15,7 @@ import type {
   EventApiRequest,
   EventDetails,
   Gift,
+  Guest,
   PlannerState,
   PublicEventRecord,
   Reservation,
@@ -38,6 +39,10 @@ type ManagedActionPayload =
   | {
       action: 'updateEvent'
       event: EventDetails
+    }
+  | {
+      action: 'updateGuestList'
+      guestList: Guest[]
     }
   | {
       action: 'addGift'
@@ -72,6 +77,7 @@ function loadPlannerDraft(): PlannerState {
 
     return {
       event: parsed.event ?? emptyPlanner.event,
+      guestList: parsed.guestList ?? [],
       gifts: parsed.gifts ?? [],
       reservations: [],
       rsvps: [],
@@ -94,6 +100,38 @@ function formatDate(value: string) {
   }).format(new Date(value))
 }
 
+function formatGuestList(guestList: Guest[]) {
+  return guestList.map((guest) => [guest.name, guest.contact].filter(Boolean).join(', ')).join('\n')
+}
+
+function parseGuestList(value: string, existingGuests: Guest[] = []) {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 120)
+    .map((line) => {
+      const [rawName, ...contactParts] = line.split(',')
+      const name = rawName.trim()
+      const contact = contactParts.join(',').trim()
+      const existing = existingGuests.find(
+        (guest) =>
+          guest.name.trim().toLowerCase() === name.toLowerCase() &&
+          guest.contact.trim().toLowerCase() === contact.toLowerCase(),
+      )
+
+      return {
+        id: existing?.id ?? createId('guest'),
+        name,
+        contact,
+      }
+    })
+}
+
+function normalizeLookup(value: string) {
+  return value.trim().toLowerCase()
+}
+
 async function readApiResponse(response: Response) {
   const body = (await response.json()) as ApiResponse
   if (!response.ok) throw new Error(body.error ?? 'Nie udalo sie zapisac danych.')
@@ -110,6 +148,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(route.isRemote)
   const [apiError, setApiError] = useState('')
   const [apiMessage, setApiMessage] = useState('')
+  const [createValidationErrors, setCreateValidationErrors] = useState<string[]>([])
   const [organizerName, setOrganizerName] = useState('')
   const [organizerContact, setOrganizerContact] = useState('')
   const [verificationSent, setVerificationSent] = useState(false)
@@ -123,6 +162,7 @@ function App() {
   const [attendanceChildren, setAttendanceChildren] = useState(1)
   const [attendanceNote, setAttendanceNote] = useState('')
   const [spamTrap, setSpamTrap] = useState('')
+  const [guestListText, setGuestListText] = useState(() => formatGuestList(planner.guestList))
   const [newGift, setNewGift] = useState<Omit<Gift, 'id'>>({
     title: '',
     category: GIFT_CATEGORIES[0],
@@ -150,6 +190,7 @@ function App() {
       .then((event) => {
         setEventRecord(event)
         setPlanner(event.planner)
+        setGuestListText(formatGuestList(event.planner.guestList))
         setSelectedGiftId(event.planner.gifts[0]?.id ?? '')
         setApiError('')
       })
@@ -193,8 +234,10 @@ function App() {
   function applyRemoteEvent(event: PublicEventRecord, message: string) {
     setEventRecord(event)
     setPlanner(event.planner)
+    setGuestListText(formatGuestList(event.planner.guestList))
     setApiMessage(message)
     setApiError('')
+    setCreateValidationErrors([])
   }
 
   async function callEventApi(body: EventApiRequest) {
@@ -228,6 +271,7 @@ function App() {
   }
 
   function updateEvent(field: keyof EventDetails, value: string) {
+    setCreateValidationErrors([])
     setPlanner((current) => ({
       ...current,
       event: {
@@ -235,6 +279,50 @@ function App() {
         [field]: value,
       },
     }))
+  }
+
+  function updateGuestListDraft(value: string) {
+    setGuestListText(value)
+    setPlanner((current) => ({
+      ...current,
+      guestList: parseGuestList(value, current.guestList),
+    }))
+  }
+
+  async function saveGuestList(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const guestList = parseGuestList(guestListText, planner.guestList)
+    setPlanner((current) => ({ ...current, guestList }))
+
+    if (!route.isRemote) {
+      setApiMessage('Lista gosci zostanie zapisana przy tworzeniu wydarzenia online.')
+      setApiError('')
+      return
+    }
+
+    try {
+      await persistManagedAction({ action: 'updateGuestList', guestList })
+    } catch (error) {
+      setApiError((error as Error).message)
+    }
+  }
+
+  function validateCreateOnlineEvent() {
+    const errors: string[] = []
+
+    if (!organizerName.trim()) errors.push('Podaj imie organizatora.')
+    if (!organizerContact.trim()) errors.push('Podaj e-mail lub telefon organizatora.')
+    if (!planner.event.childName.trim()) errors.push('Podaj imie dziecka.')
+    if (!planner.event.date.trim()) errors.push('Wybierz date i godzine wydarzenia.')
+    if (!planner.event.place.trim()) errors.push('Podaj miejsce wydarzenia.')
+
+    setCreateValidationErrors(errors)
+    if (errors.length) {
+      setApiMessage('')
+      setApiError('Uzupelnij wymagane pola przed utworzeniem wydarzenia.')
+    }
+
+    return errors.length === 0
   }
 
   async function saveEventDetails(event: FormEvent<HTMLFormElement>) {
@@ -255,18 +343,41 @@ function App() {
   }
 
   function confirmVerification() {
-    setVerifiedGuest({
-      name: guestName.trim(),
-      contact: guestContact.trim(),
+    const guestList = planner.guestList
+    const normalizedName = normalizeLookup(guestName)
+    const normalizedContact = normalizeLookup(guestContact)
+    const listedGuest = guestList.find((guest) => {
+      const guestNameMatch = normalizeLookup(guest.name) === normalizedName
+      const guestContactMatch = guest.contact && normalizeLookup(guest.contact) === normalizedContact
+
+      return guestContactMatch || guestNameMatch
     })
+
+    if (guestList.length && !listedGuest) {
+      setApiMessage('')
+      setApiError('Nie znalezlismy tej osoby na liscie gosci. Sprawdz dane albo skontaktuj sie z organizatorem.')
+      return
+    }
+
+    setVerifiedGuest({
+      name: listedGuest?.name ?? guestName.trim(),
+      contact: listedGuest?.contact || guestContact.trim(),
+    })
+    setApiError('')
   }
 
   async function createOnlineEvent() {
+    if (!validateCreateOnlineEvent()) return
+
     try {
       setApiMessage('Tworze wydarzenie online...')
+      setApiError('')
       const event = await callEventApi({
         action: 'create',
-        planner,
+        planner: {
+          ...planner,
+          guestList: parseGuestList(guestListText, planner.guestList),
+        },
         organizerName,
         organizerContact,
         spamTrap,
@@ -374,12 +485,14 @@ function App() {
 
   function loadDemoData() {
     setPlanner(initialState)
+    setGuestListText(formatGuestList(initialState.guestList))
     setApiMessage('Wczytano dane przykladowe do wersji roboczej.')
     setApiError('')
   }
 
   function resetDraft() {
     setPlanner(emptyPlanner)
+    setGuestListText('')
     setApiMessage('')
     setApiError('')
     localStorage.removeItem(DRAFT_STORAGE_KEY)
@@ -463,16 +576,24 @@ function App() {
               Imie organizatora
               <input
                 value={organizerName}
-                onChange={(event) => setOrganizerName(event.target.value)}
+                onChange={(event) => {
+                  setOrganizerName(event.target.value)
+                  setCreateValidationErrors([])
+                }}
                 placeholder="np. Mama Tosi"
+                required
               />
             </label>
             <label>
               Kontakt organizatora
               <input
                 value={organizerContact}
-                onChange={(event) => setOrganizerContact(event.target.value)}
+                onChange={(event) => {
+                  setOrganizerContact(event.target.value)
+                  setCreateValidationErrors([])
+                }}
                 placeholder="np. anna@example.com"
+                required
               />
             </label>
             <label className="spam-field">
@@ -485,6 +606,16 @@ function App() {
               />
             </label>
           </div>
+          {createValidationErrors.length ? (
+            <div className="validation-list" role="alert">
+              <strong>Brakuje kilku informacji:</strong>
+              <ul>
+                {createValidationErrors.map((message) => (
+                  <li key={message}>{message}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <OrganizerPanel
             planner={planner}
             newGift={newGift}
@@ -493,6 +624,9 @@ function App() {
             isRemote={false}
             onEventChange={updateEvent}
             onSaveEventDetails={(event) => event.preventDefault()}
+            guestListText={guestListText}
+            onGuestListTextChange={updateGuestListDraft}
+            onSaveGuestList={saveGuestList}
             onNewGiftChange={setNewGift}
             onAddGift={addGift}
             onReservationStatusChange={updateReservationStatus}
@@ -595,6 +729,9 @@ function App() {
                     isRemote={route.isRemote}
                     onEventChange={updateEvent}
                     onSaveEventDetails={saveEventDetails}
+                    guestListText={guestListText}
+                    onGuestListTextChange={updateGuestListDraft}
+                    onSaveGuestList={saveGuestList}
                     onNewGiftChange={setNewGift}
                     onAddGift={addGift}
                     onReservationStatusChange={updateReservationStatus}

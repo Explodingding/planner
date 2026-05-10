@@ -7,6 +7,7 @@ import type {
   EventStatus,
   EventVisibility,
   Gift,
+  Guest,
   PlannerState,
   PublicEventRecord,
   Reservation,
@@ -17,6 +18,7 @@ import type {
 const STORE_NAME = 'planner-events'
 const CURRENT_VERSION = 1
 const MAX_GIFTS = 40
+const MAX_GUESTS = 120
 const MAX_RSVPS = 120
 const MAX_RESERVATIONS = 120
 
@@ -126,9 +128,36 @@ function validateGift(gift: Omit<Gift, 'id'>): Omit<Gift, 'id'> {
   }
 }
 
+function validateGuest(guest: Guest): Guest {
+  return {
+    id: guest.id || createId('guest'),
+    name: requireText(guest.name, 'Imie goscia', 120),
+    contact: cleanText(guest.contact, 160),
+  }
+}
+
+function validateGuestList(guestList: Guest[] = []) {
+  return guestList
+    .slice(0, MAX_GUESTS)
+    .map(validateGuest)
+    .filter((guest, index, list) => {
+      const contact = normalizeLookup(guest.contact)
+      const name = normalizeLookup(guest.name)
+
+      return (
+        list.findIndex((item) =>
+          contact
+            ? normalizeLookup(item.contact) === contact
+            : normalizeLookup(item.name) === name,
+        ) === index
+      )
+    })
+}
+
 function validatePlanner(planner: PlannerState): PlannerState {
   return {
     event: validateEventDetails(planner.event),
+    guestList: validateGuestList(planner.guestList),
     gifts: planner.gifts.slice(0, MAX_GIFTS).map((gift) => ({
       ...validateGift(gift),
       id: gift.id || createId('gift'),
@@ -153,22 +182,26 @@ function validateReservation(record: EventRecord, reservation: Omit<Reservation,
     throw new ApiError('Lista rezerwacji jest pelna.')
   }
 
+  const guest = requireListedGuest(record, reservation.guestName, reservation.contact)
+
   return {
     giftId: reservation.giftId,
-    guestName: requireText(reservation.guestName, 'Imie rodzica', 120),
-    contact: requireText(reservation.contact, 'Kontakt', 160),
+    guestName: guest.name,
+    contact: guest.contact,
     message: cleanText(reservation.message, 700),
   }
 }
 
-function validateRsvp(rsvp: Omit<Rsvp, 'id' | 'updatedAt'>): Omit<Rsvp, 'id' | 'updatedAt'> {
+function validateRsvp(record: EventRecord, rsvp: Omit<Rsvp, 'id' | 'updatedAt'>): Omit<Rsvp, 'id' | 'updatedAt'> {
   if (!['yes', 'no', 'maybe'].includes(rsvp.status)) {
     throw new ApiError('Nieprawidlowy status obecnosci.')
   }
 
+  const guest = requireListedGuest(record, rsvp.guestName, rsvp.contact)
+
   return {
-    guestName: requireText(rsvp.guestName, 'Imie rodzica', 120),
-    contact: requireText(rsvp.contact, 'Kontakt', 160),
+    guestName: guest.name,
+    contact: guest.contact,
     status: rsvp.status,
     adults: rsvp.status === 'yes' ? clampNumber(rsvp.adults, 0, 12) : 0,
     children: rsvp.status === 'yes' ? clampNumber(rsvp.children, 0, 12) : 0,
@@ -180,6 +213,37 @@ function clampNumber(value: unknown, min: number, max: number) {
   const number = Number(value)
   if (!Number.isFinite(number)) return min
   return Math.min(max, Math.max(min, Math.floor(number)))
+}
+
+function normalizeLookup(value: string) {
+  return value.trim().toLowerCase()
+}
+
+function requireListedGuest(record: EventRecord, guestName: string, contact: string) {
+  const payload = {
+    name: requireText(guestName, 'Imie rodzica', 120),
+    contact: requireText(contact, 'Kontakt', 160),
+  }
+
+  if (!record.planner.guestList.length) return payload
+
+  const normalizedName = normalizeLookup(payload.name)
+  const normalizedContact = normalizeLookup(payload.contact)
+  const guest = record.planner.guestList.find((item) => {
+    const contactMatch = item.contact && normalizeLookup(item.contact) === normalizedContact
+    const nameMatch = normalizeLookup(item.name) === normalizedName
+
+    return contactMatch || nameMatch
+  })
+
+  if (!guest) {
+    throw new ApiError('Nie znaleziono tej osoby na liscie zaproszonych.', 403)
+  }
+
+  return {
+    name: guest.name,
+    contact: guest.contact || payload.contact,
+  }
 }
 
 function normalizeRecord(record: Partial<EventRecord>): EventRecord {
@@ -195,6 +259,7 @@ function normalizeRecord(record: Partial<EventRecord>): EventRecord {
     lastUpdatedBy: record.lastUpdatedBy || record.createdBy || 'legacy-organizer',
     planner: {
       event: validateEventDetails(record.planner?.event ?? emptyEvent()),
+      guestList: validateGuestList(record.planner?.guestList ?? []),
       gifts: record.planner?.gifts ?? [],
       reservations: record.planner?.reservations ?? [],
       rsvps: record.planner?.rsvps ?? [],
@@ -225,6 +290,10 @@ function stripPrivateData(record: EventRecord, req: Request, canManage: boolean)
     ? record.planner
     : {
         ...record.planner,
+        guestList: record.planner.guestList.map((guest) => ({
+          ...guest,
+          contact: '',
+        })),
         reservations: record.planner.reservations.map((reservation) => ({
           ...reservation,
           contact: '',
@@ -333,7 +402,7 @@ async function handlePublicWrite(req: Request, body: EventApiRequest) {
     return json({ event: stripPrivateData(saved, req, false) })
   }
 
-  const payload = validateRsvp(body.rsvp)
+  const payload = validateRsvp(record, body.rsvp)
   const existing = record.planner.rsvps.find((rsvp) => rsvp.contact === payload.contact)
   const rsvp: Rsvp = {
     ...payload,
@@ -356,6 +425,7 @@ async function handlePublicWrite(req: Request, body: EventApiRequest) {
 async function handleManagedWrite(req: Request, body: EventApiRequest) {
   if (
     body.action !== 'updateEvent' &&
+    body.action !== 'updateGuestList' &&
     body.action !== 'addGift' &&
     body.action !== 'updateReservationStatus'
   ) {
@@ -366,6 +436,10 @@ async function handleManagedWrite(req: Request, body: EventApiRequest) {
 
   if (body.action === 'updateEvent') {
     record.planner.event = validateEventDetails(body.event)
+  }
+
+  if (body.action === 'updateGuestList') {
+    record.planner.guestList = validateGuestList(body.guestList)
   }
 
   if (body.action === 'addGift') {
