@@ -1,7 +1,11 @@
 import { getStore } from '@netlify/blobs'
 import type {
+  ApiResponse,
+  EventApiRequest,
   EventDetails,
   EventRecord,
+  EventStatus,
+  EventVisibility,
   Gift,
   PlannerState,
   PublicEventRecord,
@@ -10,30 +14,51 @@ import type {
   Rsvp,
 } from '../../src/types'
 
-type Action =
-  | 'create'
-  | 'updateEvent'
-  | 'addGift'
-  | 'reserveGift'
-  | 'submitRsvp'
-  | 'updateReservationStatus'
+const STORE_NAME = 'planner-events'
+const CURRENT_VERSION = 1
+const MAX_GIFTS = 40
+const MAX_RSVPS = 120
+const MAX_RESERVATIONS = 120
 
-type ActionRequest = {
-  action: Action
-  id?: string
-  token?: string
-  planner?: PlannerState
-  event?: EventDetails
-  gift?: Omit<Gift, 'id'>
-  reservation?: Omit<Reservation, 'id' | 'status' | 'createdAt'>
-  rsvp?: Omit<Rsvp, 'id' | 'updatedAt'>
-  reservationId?: string
-  status?: ReservationStatus
+class ApiError extends Error {
+  constructor(
+    message: string,
+    public status = 400,
+  ) {
+    super(message)
+  }
 }
 
-const STORE_NAME = 'planner-events'
+type ManagedRecordResult = {
+  record: EventRecord
+}
 
-function json(data: unknown, init?: ResponseInit) {
+const storage = {
+  async read(id: string) {
+    const store = getStore(STORE_NAME)
+    const record = await store.get(getStoreKey(id), {
+      consistency: 'strong',
+      type: 'json',
+    })
+
+    return record ? normalizeRecord(record as Partial<EventRecord>) : null
+  },
+
+  async write(record: EventRecord, actor: string) {
+    const store = getStore(STORE_NAME)
+    const nextRecord: EventRecord = {
+      ...record,
+      version: (record.version || 0) + 1,
+      lastUpdatedBy: actor,
+      updatedAt: new Date().toISOString(),
+    }
+
+    await store.setJSON(getStoreKey(record.id), nextRecord)
+    return nextRecord
+  },
+}
+
+function json(data: ApiResponse, init?: ResponseInit) {
   return new Response(JSON.stringify(data), {
     ...init,
     headers: {
@@ -67,6 +92,128 @@ function getOrigin(req: Request) {
   return new URL(req.url).origin
 }
 
+function cleanText(value: unknown, maxLength: number) {
+  return String(value ?? '').trim().slice(0, maxLength)
+}
+
+function requireText(value: unknown, label: string, maxLength: number) {
+  const text = cleanText(value, maxLength)
+  if (!text) throw new ApiError(`${label} jest wymagane.`)
+  return text
+}
+
+function assertNoSpam(spamTrap?: string) {
+  if (spamTrap && spamTrap.trim()) {
+    throw new ApiError('Nie mozna zapisac formularza.', 400)
+  }
+}
+
+function validateEventDetails(event: EventDetails): EventDetails {
+  return {
+    childName: requireText(event.childName, 'Imie dziecka', 80),
+    date: requireText(event.date, 'Termin wydarzenia', 80),
+    place: requireText(event.place, 'Miejsce wydarzenia', 160),
+    theme: cleanText(event.theme, 160),
+    notes: cleanText(event.notes, 1200),
+  }
+}
+
+function validateGift(gift: Omit<Gift, 'id'>): Omit<Gift, 'id'> {
+  return {
+    title: requireText(gift.title, 'Nazwa prezentu', 120),
+    category: requireText(gift.category, 'Kategoria prezentu', 80),
+    details: cleanText(gift.details, 700),
+  }
+}
+
+function validatePlanner(planner: PlannerState): PlannerState {
+  return {
+    event: validateEventDetails(planner.event),
+    gifts: planner.gifts.slice(0, MAX_GIFTS).map((gift) => ({
+      ...validateGift(gift),
+      id: gift.id || createId('gift'),
+    })),
+    reservations: [],
+    rsvps: [],
+  }
+}
+
+function validateReservation(record: EventRecord, reservation: Omit<Reservation, 'id' | 'status' | 'createdAt'>) {
+  const giftExists = record.planner.gifts.some((gift) => gift.id === reservation.giftId)
+  if (!giftExists) throw new ApiError('Wybrany prezent nie istnieje.', 404)
+
+  const giftTaken = record.planner.reservations.some(
+    (item) =>
+      item.giftId === reservation.giftId &&
+      (item.status === 'approved' || item.status === 'bought'),
+  )
+  if (giftTaken) throw new ApiError('Ten prezent jest juz zarezerwowany.')
+
+  if (record.planner.reservations.length >= MAX_RESERVATIONS) {
+    throw new ApiError('Lista rezerwacji jest pelna.')
+  }
+
+  return {
+    giftId: reservation.giftId,
+    guestName: requireText(reservation.guestName, 'Imie rodzica', 120),
+    contact: requireText(reservation.contact, 'Kontakt', 160),
+    message: cleanText(reservation.message, 700),
+  }
+}
+
+function validateRsvp(rsvp: Omit<Rsvp, 'id' | 'updatedAt'>): Omit<Rsvp, 'id' | 'updatedAt'> {
+  if (!['yes', 'no', 'maybe'].includes(rsvp.status)) {
+    throw new ApiError('Nieprawidlowy status obecnosci.')
+  }
+
+  return {
+    guestName: requireText(rsvp.guestName, 'Imie rodzica', 120),
+    contact: requireText(rsvp.contact, 'Kontakt', 160),
+    status: rsvp.status,
+    adults: rsvp.status === 'yes' ? clampNumber(rsvp.adults, 0, 12) : 0,
+    children: rsvp.status === 'yes' ? clampNumber(rsvp.children, 0, 12) : 0,
+    note: cleanText(rsvp.note, 700),
+  }
+}
+
+function clampNumber(value: unknown, min: number, max: number) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return min
+  return Math.min(max, Math.max(min, Math.floor(number)))
+}
+
+function normalizeRecord(record: Partial<EventRecord>): EventRecord {
+  const now = new Date().toISOString()
+
+  return {
+    id: record.id || createEventSlug(record.planner?.event.childName),
+    organizerToken: record.organizerToken || crypto.randomUUID(),
+    version: record.version || CURRENT_VERSION,
+    status: (record.status as EventStatus) || 'active',
+    visibility: (record.visibility as EventVisibility) || 'public_link',
+    createdBy: record.createdBy || 'legacy-organizer',
+    lastUpdatedBy: record.lastUpdatedBy || record.createdBy || 'legacy-organizer',
+    planner: {
+      event: validateEventDetails(record.planner?.event ?? emptyEvent()),
+      gifts: record.planner?.gifts ?? [],
+      reservations: record.planner?.reservations ?? [],
+      rsvps: record.planner?.rsvps ?? [],
+    },
+    createdAt: record.createdAt || now,
+    updatedAt: record.updatedAt || now,
+  }
+}
+
+function emptyEvent(): EventDetails {
+  return {
+    childName: 'Wydarzenie',
+    date: new Date().toISOString(),
+    place: 'Do ustalenia',
+    theme: '',
+    notes: '',
+  }
+}
+
 function stripPrivateData(record: EventRecord, req: Request, canManage: boolean): PublicEventRecord {
   const origin = getOrigin(req)
   const publicUrl = `${origin}/event/${record.id}`
@@ -74,67 +221,43 @@ function stripPrivateData(record: EventRecord, req: Request, canManage: boolean)
     ? `${origin}/manage/${record.id}?token=${record.organizerToken}`
     : undefined
 
-  if (canManage) {
-    return {
-      id: record.id,
-      planner: record.planner,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-      canManage,
-      publicUrl,
-      manageUrl,
-    }
-  }
+  const planner = canManage
+    ? record.planner
+    : {
+        ...record.planner,
+        reservations: record.planner.reservations.map((reservation) => ({
+          ...reservation,
+          contact: '',
+          message: '',
+        })),
+        rsvps: record.planner.rsvps.map((rsvp) => ({
+          ...rsvp,
+          contact: '',
+          note: '',
+        })),
+      }
 
   return {
     id: record.id,
-    planner: {
-      ...record.planner,
-      reservations: record.planner.reservations.map((reservation) => ({
-        ...reservation,
-        contact: '',
-      })),
-      rsvps: record.planner.rsvps.map((rsvp) => ({
-        ...rsvp,
-        contact: '',
-        note: '',
-      })),
-    },
+    version: record.version,
+    status: record.status,
+    visibility: record.visibility,
+    createdBy: record.createdBy,
+    planner,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     canManage,
     publicUrl,
+    manageUrl,
   }
 }
 
-async function readRecord(id: string) {
-  const store = getStore(STORE_NAME)
-  const record = await store.get(getStoreKey(id), {
-    consistency: 'strong',
-    type: 'json',
-  })
+async function requireManagedRecord(id: string | undefined, token: string | undefined): Promise<ManagedRecordResult> {
+  if (!id || !token) throw new ApiError('Brakuje identyfikatora wydarzenia lub tokenu.', 400)
 
-  return record as EventRecord | null
-}
-
-async function writeRecord(record: EventRecord) {
-  const store = getStore(STORE_NAME)
-  await store.setJSON(getStoreKey(record.id), record)
-}
-
-async function requireManagedRecord(id: string | undefined, token: string | undefined) {
-  if (!id || !token) {
-    return { error: json({ error: 'Missing event id or organizer token' }, { status: 400 }) }
-  }
-
-  const record = await readRecord(id)
-  if (!record) {
-    return { error: json({ error: 'Event not found' }, { status: 404 }) }
-  }
-
-  if (record.organizerToken !== token) {
-    return { error: json({ error: 'Invalid organizer token' }, { status: 403 }) }
-  }
+  const record = await storage.read(id)
+  if (!record) throw new ApiError('Nie znaleziono wydarzenia.', 404)
+  if (record.organizerToken !== token) throw new ApiError('Nieprawidlowy link organizatora.', 403)
 
   return { record }
 }
@@ -144,125 +267,127 @@ async function handleGet(req: Request) {
   const id = url.searchParams.get('id')
   const token = url.searchParams.get('token') ?? undefined
 
-  if (!id) {
-    return json({ error: 'Missing event id' }, { status: 400 })
-  }
+  if (!id) throw new ApiError('Brakuje identyfikatora wydarzenia.')
 
-  const record = await readRecord(id)
-  if (!record) {
-    return json({ error: 'Event not found' }, { status: 404 })
-  }
+  const record = await storage.read(id)
+  if (!record) throw new ApiError('Nie znaleziono wydarzenia.', 404)
 
   return json({
     event: stripPrivateData(record, req, token === record.organizerToken),
   })
 }
 
-async function handleCreate(req: Request, body: ActionRequest) {
-  if (!body.planner) {
-    return json({ error: 'Missing planner payload' }, { status: 400 })
-  }
+async function handleCreate(req: Request, body: EventApiRequest) {
+  if (body.action !== 'create') throw new ApiError('Nieprawidlowa akcja.')
+  assertNoSpam(body.spamTrap)
 
+  const planner = validatePlanner(body.planner)
   const now = new Date().toISOString()
-  const id = createEventSlug(body.planner.event.childName)
+  const createdBy = `${requireText(body.organizerName, 'Imie organizatora', 120)} <${requireText(
+    body.organizerContact,
+    'Kontakt organizatora',
+    160,
+  )}>`
+
   const record: EventRecord = {
-    id,
+    id: createEventSlug(planner.event.childName),
     organizerToken: crypto.randomUUID(),
-    planner: body.planner,
+    version: CURRENT_VERSION,
+    status: 'active',
+    visibility: 'public_link',
+    createdBy,
+    lastUpdatedBy: createdBy,
+    planner,
     createdAt: now,
     updatedAt: now,
   }
 
-  await writeRecord(record)
+  await getStore(STORE_NAME).setJSON(getStoreKey(record.id), record)
 
   return json({
     event: stripPrivateData(record, req, true),
   })
 }
 
-async function handlePost(req: Request) {
-  const body = (await req.json()) as ActionRequest
-
-  if (body.action === 'create') {
-    return handleCreate(req, body)
+async function handlePublicWrite(req: Request, body: EventApiRequest) {
+  if (body.action !== 'reserveGift' && body.action !== 'submitRsvp') {
+    throw new ApiError('Nieprawidlowa akcja.')
   }
+  assertNoSpam(body.spamTrap)
+
+  const record = await storage.read(body.id)
+  if (!record) throw new ApiError('Nie znaleziono wydarzenia.', 404)
+  if (record.status !== 'active') throw new ApiError('To wydarzenie nie przyjmuje juz odpowiedzi.')
 
   if (body.action === 'reserveGift') {
-    if (!body.id || !body.reservation) {
-      return json({ error: 'Missing reservation payload' }, { status: 400 })
-    }
-
-    const record = await readRecord(body.id)
-    if (!record) return json({ error: 'Event not found' }, { status: 404 })
-
+    const payload = validateReservation(record, body.reservation)
     const reservation: Reservation = {
-      ...body.reservation,
+      ...payload,
       id: createId('reservation'),
       status: 'pending',
       createdAt: new Date().toISOString(),
     }
 
     record.planner.reservations = [...record.planner.reservations, reservation]
-    record.updatedAt = new Date().toISOString()
-    await writeRecord(record)
-
-    return json({ event: stripPrivateData(record, req, false) })
+    const saved = await storage.write(record, payload.contact)
+    return json({ event: stripPrivateData(saved, req, false) })
   }
 
-  if (body.action === 'submitRsvp') {
-    if (!body.id || !body.rsvp) {
-      return json({ error: 'Missing RSVP payload' }, { status: 400 })
-    }
-
-    const record = await readRecord(body.id)
-    if (!record) return json({ error: 'Event not found' }, { status: 404 })
-
-    const existing = record.planner.rsvps.find((rsvp) => rsvp.contact === body.rsvp?.contact)
-    const rsvp: Rsvp = {
-      ...body.rsvp,
-      id: existing?.id ?? createId('rsvp'),
-      updatedAt: new Date().toISOString(),
-    }
-
-    record.planner.rsvps = existing
-      ? record.planner.rsvps.map((item) => (item.id === existing.id ? rsvp : item))
-      : [...record.planner.rsvps, rsvp]
-    record.updatedAt = new Date().toISOString()
-    await writeRecord(record)
-
-    return json({ event: stripPrivateData(record, req, false) })
+  const payload = validateRsvp(body.rsvp)
+  const existing = record.planner.rsvps.find((rsvp) => rsvp.contact === payload.contact)
+  const rsvp: Rsvp = {
+    ...payload,
+    id: existing?.id ?? createId('rsvp'),
+    updatedAt: new Date().toISOString(),
   }
 
-  const managed = await requireManagedRecord(body.id, body.token)
-  if (managed.error) return managed.error
+  if (!existing && record.planner.rsvps.length >= MAX_RSVPS) {
+    throw new ApiError('Lista gosci jest pelna.')
+  }
 
-  const record = managed.record
-  if (!record) return json({ error: 'Event not found' }, { status: 404 })
+  record.planner.rsvps = existing
+    ? record.planner.rsvps.map((item) => (item.id === existing.id ? rsvp : item))
+    : [...record.planner.rsvps, rsvp]
+
+  const saved = await storage.write(record, payload.contact)
+  return json({ event: stripPrivateData(saved, req, false) })
+}
+
+async function handleManagedWrite(req: Request, body: EventApiRequest) {
+  if (
+    body.action !== 'updateEvent' &&
+    body.action !== 'addGift' &&
+    body.action !== 'updateReservationStatus'
+  ) {
+    throw new ApiError('Nieprawidlowa akcja.')
+  }
+
+  const { record } = await requireManagedRecord(body.id, body.token)
 
   if (body.action === 'updateEvent') {
-    if (!body.event) return json({ error: 'Missing event payload' }, { status: 400 })
-    record.planner.event = body.event
+    record.planner.event = validateEventDetails(body.event)
   }
 
   if (body.action === 'addGift') {
-    if (!body.gift) return json({ error: 'Missing gift payload' }, { status: 400 })
+    if (record.planner.gifts.length >= MAX_GIFTS) throw new ApiError('Lista prezentow jest pelna.')
     record.planner.gifts = [
       ...record.planner.gifts,
       {
-        ...body.gift,
+        ...validateGift(body.gift),
         id: createId('gift'),
       },
     ]
   }
 
   if (body.action === 'updateReservationStatus') {
-    if (!body.reservationId || !body.status) {
-      return json({ error: 'Missing reservation status payload' }, { status: 400 })
+    if (!['pending', 'approved', 'rejected', 'bought'].includes(body.status)) {
+      throw new ApiError('Nieprawidlowy status rezerwacji.')
     }
 
     const target = record.planner.reservations.find(
       (reservation) => reservation.id === body.reservationId,
     )
+    if (!target) throw new ApiError('Nie znaleziono rezerwacji.', 404)
 
     record.planner.reservations = record.planner.reservations.map((reservation) => {
       if (reservation.id === body.reservationId) {
@@ -271,7 +396,6 @@ async function handlePost(req: Request) {
 
       if (
         body.status === 'approved' &&
-        target &&
         reservation.giftId === target.giftId &&
         reservation.status === 'pending'
       ) {
@@ -282,10 +406,19 @@ async function handlePost(req: Request) {
     })
   }
 
-  record.updatedAt = new Date().toISOString()
-  await writeRecord(record)
+  const saved = await storage.write(record, record.createdBy)
+  return json({ event: stripPrivateData(saved, req, true) })
+}
 
-  return json({ event: stripPrivateData(record, req, true) })
+async function handlePost(req: Request) {
+  const body = (await req.json()) as EventApiRequest
+
+  if (body.action === 'create') return handleCreate(req, body)
+  if (body.action === 'reserveGift' || body.action === 'submitRsvp') {
+    return handlePublicWrite(req, body)
+  }
+
+  return handleManagedWrite(req, body)
 }
 
 export default async (req: Request) => {
@@ -293,9 +426,13 @@ export default async (req: Request) => {
     if (req.method === 'GET') return handleGet(req)
     if (req.method === 'POST') return handlePost(req)
 
-    return json({ error: 'Method not allowed' }, { status: 405 })
+    return json({ error: 'Metoda nie jest obslugiwana.' }, { status: 405 })
   } catch (error) {
+    if (error instanceof ApiError) {
+      return json({ error: error.message }, { status: error.status })
+    }
+
     console.error(error)
-    return json({ error: 'Unexpected server error' }, { status: 500 })
+    return json({ error: 'Wystapil nieoczekiwany blad serwera.' }, { status: 500 })
   }
 }

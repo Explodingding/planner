@@ -1,5 +1,18 @@
 import type { PlannerState } from './types'
 
+export const emptyPlanner: PlannerState = {
+  event: {
+    childName: '',
+    date: '',
+    place: '',
+    theme: '',
+    notes: '',
+  },
+  gifts: [],
+  reservations: [],
+  rsvps: [],
+}
+
 export const initialState: PlannerState = {
   event: {
     childName: 'Tosia',
