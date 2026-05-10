@@ -249,7 +249,9 @@ function App() {
   }
 
   async function persistManagedAction(body: ManagedActionPayload) {
-    if (!route.eventId || !route.organizerToken) return
+    if (!route.eventId || !route.organizerToken) {
+      throw new Error('Do zapisu zmian potrzebny jest prywatny link organizatora z tokenem.')
+    }
 
     const event = await callEventApi({
       ...body,
@@ -300,9 +302,18 @@ function App() {
       return
     }
 
+    if (!route.organizerToken) {
+      setApiMessage('')
+      setApiError('Liste gosci mozna zapisac tylko z prywatnego linku organizatora.')
+      return
+    }
+
     try {
+      setApiMessage('Zapisuje liste gosci online...')
+      setApiError('')
       await persistManagedAction({ action: 'updateGuestList', guestList })
     } catch (error) {
+      setApiMessage('')
       setApiError((error as Error).message)
     }
   }
