@@ -6,6 +6,7 @@ import {
   GuestForms,
   OrganizerPanel,
   PartnerServices,
+  PublicGuestList,
   RsvpSummaryPanel,
   SharePanel,
 } from './components/PlannerSections'
@@ -140,11 +141,17 @@ async function readApiResponse(response: Response) {
   return body.event
 }
 
+type RemoteTabId = 'info' | 'guests' | 'gifts' | 'help' | 'organizer'
+type CreateTabId = 'setup' | 'guests' | 'gifts' | 'help'
+
 function App() {
   const [route] = useState(getRoute)
   const [planner, setPlanner] = useState<PlannerState>(loadPlannerDraft)
   const [eventRecord, setEventRecord] = useState<PublicEventRecord | null>(null)
-  const [isOrganizerOpen, setIsOrganizerOpen] = useState(!route.isRemote || route.isManageRoute)
+  const [createTab, setCreateTab] = useState<CreateTabId>('setup')
+  const [remoteTab, setRemoteTab] = useState<RemoteTabId>(() =>
+    route.isManageRoute ? 'organizer' : 'info',
+  )
   const [isLoading, setIsLoading] = useState(route.isRemote)
   const [apiError, setApiError] = useState('')
   const [apiMessage, setApiMessage] = useState('')
@@ -517,39 +524,108 @@ function App() {
   if (isLoading) {
     return (
       <main className="app-shell">
-        <section className="panel">
-          <p className="eyebrow">Prezentownik MVP</p>
+        <section className="panel glass-panel">
+          <p className="eyebrow">Prezentownik</p>
           <h1>Laduje wydarzenie...</h1>
         </section>
       </main>
     )
   }
 
+  const createTabs: { id: CreateTabId; label: string }[] = [
+    { id: 'setup', label: 'Start' },
+    { id: 'guests', label: 'Lista gosci' },
+    { id: 'gifts', label: 'Prezenty' },
+    { id: 'help', label: 'Pomoc' },
+  ]
+
+  const effectiveRemoteTab: RemoteTabId =
+    !canManage && remoteTab === 'organizer' ? 'info' : remoteTab
+
+  const remoteTabs: { id: RemoteTabId; label: string }[] = [
+    { id: 'info', label: 'Impreza' },
+    { id: 'guests', label: 'Goscie' },
+    { id: 'gifts', label: 'Prezenty' },
+    { id: 'help', label: 'Pomoc' },
+    ...(canManage ? ([{ id: 'organizer' as const, label: 'Organizator' }] as const) : []),
+  ]
+
   return (
-    <main className="app-shell">
-      <section className="hero-section">
-        <div className="hero-copy">
-          <p className="eyebrow">Prezentownik MVP</p>
-          <h1>Kolorowy planner urodzin, prezentow i gosci.</h1>
-          <p>
+    <main className={`app-shell${route.isRemote ? '' : ' app-shell--create'}`}>
+      <header className="app-topbar glass-panel">
+        <div className="app-brand">
+          <span className="app-logo" aria-hidden>
+            🎁
+          </span>
+          <div>
+            <p className="app-brand-title">Prezentownik</p>
+            <p className="app-brand-sub">
+              {route.isRemote
+                ? planner.event.childName
+                  ? `Urodziny: ${planner.event.childName}`
+                  : 'Wspolna lista i obecnosc'
+                : 'Nowe wydarzenie'}
+            </p>
+          </div>
+        </div>
+        <nav className="app-tabs" role="tablist" aria-label="Nawigacja sekcji">
+          {(route.isRemote ? remoteTabs : createTabs).map((tab) => {
+            const isActive = route.isRemote
+              ? effectiveRemoteTab === tab.id
+              : createTab === tab.id
+
+            return (
+            <button
+              key={tab.id}
+              id={`tab-${tab.id}`}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              className={`app-tab${isActive ? ' is-active' : ''}`}
+              onClick={() =>
+                route.isRemote
+                  ? setRemoteTab(tab.id as RemoteTabId)
+                  : setCreateTab(tab.id as CreateTabId)
+              }
+            >
+              {tab.label}
+            </button>
+            )
+          })}
+        </nav>
+      </header>
+
+      <section className="hero-strip glass-panel">
+        <div className="hero-strip-copy">
+          <p className="eyebrow">{route.isRemote ? 'Wydarzenie online' : 'Tworzenie wydarzenia'}</p>
+          <h1 className="hero-strip-title">
             {route.isRemote
-              ? 'Rodzice korzystaja ze wspolnej listy zapisanej w Netlify Blobs.'
-              : 'Utworz prawdziwe wydarzenie, dodaj pierwsze pomysly na prezenty i wyslij link rodzicom.'}
+              ? 'Lista prezentow, gosci i szczegoly imprezy w jednym miejscu.'
+              : 'Urodziny bez chaosu: lista, goscie i link dla rodzicow.'}
+          </h1>
+          <p className="hero-strip-lead">
+            {route.isRemote
+              ? 'Dane sa wspoldzielone przez Netlify Blobs. Uzyj zakladek powyzej, aby przejsc miedzy sekcjami.'
+              : 'Uzupelnij zakladki po kolei, potem utworz wydarzenie online.'}
           </p>
           <div className="hero-actions">
             {route.isRemote ? (
-              <a className="button primary" href="#guest">
-                Zglos rezerwacje
-              </a>
+              <button className="button primary" type="button" onClick={() => setRemoteTab('gifts')}>
+                Zobacz prezenty
+              </button>
             ) : (
               <button className="button primary" type="button" onClick={createOnlineEvent}>
                 Utworz wydarzenie online
               </button>
             )}
-            {canManage ? (
-              <a className="button secondary" href="#organizer">
+            {route.isRemote && canManage ? (
+              <button
+                className="button secondary"
+                type="button"
+                onClick={() => setRemoteTab('organizer')}
+              >
                 Panel organizatora
-              </a>
+              </button>
             ) : null}
             {!route.isRemote ? (
               <button className="button secondary" type="button" onClick={loadDemoData}>
@@ -557,8 +633,6 @@ function App() {
               </button>
             ) : null}
           </div>
-          {apiMessage ? <p className="status-message">{apiMessage}</p> : null}
-          {apiError ? <p className="error-message">{apiError}</p> : null}
         </div>
         <EventSummary
           childName={planner.event.childName}
@@ -573,193 +647,354 @@ function App() {
         />
       </section>
 
+      {apiMessage ? <p className="status-message">{apiMessage}</p> : null}
+      {apiError ? <p className="error-message">{apiError}</p> : null}
+
       {!route.isRemote ? (
-        <section className="panel organizer-panel" id="organizer">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Tworzenie wydarzenia</p>
-              <h2>Dane organizatora i szczegoly urodzin</h2>
-              <p>Po utworzeniu dostaniesz prywatny link organizatora i publiczny link dla rodzicow.</p>
-            </div>
-          </div>
-          <div className="grid two-columns organizer-identity">
-            <label>
-              Imie organizatora
-              <input
-                value={organizerName}
-                onChange={(event) => {
-                  setOrganizerName(event.target.value)
-                  setCreateValidationErrors([])
-                }}
-                placeholder="np. Mama Tosi"
-                required
-              />
-            </label>
-            <label>
-              Kontakt organizatora
-              <input
-                value={organizerContact}
-                onChange={(event) => {
-                  setOrganizerContact(event.target.value)
-                  setCreateValidationErrors([])
-                }}
-                placeholder="np. anna@example.com"
-                required
-              />
-            </label>
-            <label className="spam-field">
-              Website
-              <input
-                autoComplete="off"
-                tabIndex={-1}
-                value={spamTrap}
-                onChange={(event) => setSpamTrap(event.target.value)}
-              />
-            </label>
-          </div>
-          {createValidationErrors.length ? (
-            <div className="validation-list" role="alert">
-              <strong>Brakuje kilku informacji:</strong>
-              <ul>
-                {createValidationErrors.map((message) => (
-                  <li key={message}>{message}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          <OrganizerPanel
-            planner={planner}
-            newGift={newGift}
-            pendingReservations={[]}
-            approvedReservations={[]}
-            isRemote={false}
-            onEventChange={updateEvent}
-            onSaveEventDetails={(event) => event.preventDefault()}
-            guestListText={guestListText}
-            onGuestListTextChange={updateGuestListDraft}
-            onSaveGuestList={saveGuestList}
-            onNewGiftChange={setNewGift}
-            onAddGift={addGift}
-            onReservationStatusChange={updateReservationStatus}
-          />
-          <div className="hero-actions">
-            <button className="button primary" type="button" onClick={createOnlineEvent}>
-              Utworz wydarzenie online
-            </button>
-            <button className="button secondary" type="button" onClick={resetDraft}>
-              Wyczysc wersje robocza
-            </button>
-          </div>
-          <PartnerServices />
-        </section>
-      ) : (
-        <>
-          <SharePanel
-            theme={planner.event.theme}
-            notes={planner.event.notes}
-            publicUrl={publicUrl}
-            manageUrl={manageUrl}
-            whatsappText={whatsappText}
-            onCopy={copyShareLink}
-          />
-
-          <RsvpSummaryPanel planner={planner} rsvpSummary={rsvpSummary} />
-
-          <section className="panel" id="guest">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">Dla wszystkich zaproszonych</p>
-                <h2>Publiczna lista prezentow</h2>
-                <p>Goscie widza pomysly i moga zglosic rezerwacje po potwierdzeniu osoby.</p>
-              </div>
-              {verifiedGuest ? (
-                <span className="pill success">Zalogowano jako {verifiedGuest.name}</span>
-              ) : (
-                <span className="pill">Wymagane potwierdzenie</span>
-              )}
-            </div>
-
-            <GiftList
-              planner={planner}
-              reservationsByGift={reservationsByGift}
-              getGiftState={getGiftState}
-            />
-
-            <GuestForms
-              planner={planner}
-              verifiedGuest={verifiedGuest}
-              guestName={guestName}
-              guestContact={guestContact}
-              verificationSent={verificationSent}
-              selectedGiftId={selectedGiftId}
-              reservationMessage={reservationMessage}
-              attendanceStatus={attendanceStatus}
-              attendanceAdults={attendanceAdults}
-              attendanceChildren={attendanceChildren}
-              attendanceNote={attendanceNote}
-              spamTrap={spamTrap}
-              onGuestNameChange={setGuestName}
-              onGuestContactChange={setGuestContact}
-              onSendVerification={sendVerification}
-              onConfirmVerification={confirmVerification}
-              onSelectedGiftChange={setSelectedGiftId}
-              onReservationMessageChange={setReservationMessage}
-              onAttendanceStatusChange={setAttendanceStatus}
-              onAttendanceAdultsChange={setAttendanceAdults}
-              onAttendanceChildrenChange={setAttendanceChildren}
-              onAttendanceNoteChange={setAttendanceNote}
-              onSpamTrapChange={setSpamTrap}
-              onRequestReservation={requestReservation}
-              onSubmitRsvp={submitRsvp}
-            />
-          </section>
-
-          {canManage ? (
-            <section className="panel organizer-panel" id="organizer">
+        <div className="tab-panel-stack">
+          {createTab === 'setup' ? (
+            <section
+              className="panel glass-panel organizer-panel"
+              role="tabpanel"
+              aria-labelledby={`tab-${createTab}`}
+            >
               <div className="section-heading">
                 <div>
-                  <p className="eyebrow">Panel organizatora</p>
-                  <h2>Zarzadzanie wydarzeniem</h2>
+                  <p className="eyebrow">Krok 1</p>
+                  <h2>Organizator i szczegoly urodzin</h2>
+                  <p>Po utworzeniu dostaniesz prywatny link organizatora i publiczny link dla rodzicow.</p>
                 </div>
-                <button
-                  className="button secondary"
-                  type="button"
-                  onClick={() => setIsOrganizerOpen((value) => !value)}
-                >
-                  {isOrganizerOpen ? 'Ukryj panel' : 'Pokaz panel'}
+              </div>
+              <div className="grid two-columns organizer-identity">
+                <label>
+                  Imie organizatora
+                  <input
+                    value={organizerName}
+                    onChange={(event) => {
+                      setOrganizerName(event.target.value)
+                      setCreateValidationErrors([])
+                    }}
+                    placeholder="np. Mama Tosi"
+                    required
+                  />
+                </label>
+                <label>
+                  Kontakt organizatora
+                  <input
+                    value={organizerContact}
+                    onChange={(event) => {
+                      setOrganizerContact(event.target.value)
+                      setCreateValidationErrors([])
+                    }}
+                    placeholder="np. anna@example.com"
+                    required
+                  />
+                </label>
+                <label className="spam-field">
+                  Website
+                  <input
+                    autoComplete="off"
+                    tabIndex={-1}
+                    value={spamTrap}
+                    onChange={(event) => setSpamTrap(event.target.value)}
+                  />
+                </label>
+              </div>
+              {createValidationErrors.length ? (
+                <div className="validation-list" role="alert">
+                  <strong>Brakuje kilku informacji:</strong>
+                  <ul>
+                    {createValidationErrors.map((message) => (
+                      <li key={message}>{message}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <OrganizerPanel
+                planner={planner}
+                newGift={newGift}
+                pendingReservations={[]}
+                approvedReservations={[]}
+                isRemote={false}
+                onEventChange={updateEvent}
+                onSaveEventDetails={(event) => event.preventDefault()}
+                guestListText={guestListText}
+                onGuestListTextChange={updateGuestListDraft}
+                onSaveGuestList={saveGuestList}
+                onNewGiftChange={setNewGift}
+                onAddGift={addGift}
+                onReservationStatusChange={updateReservationStatus}
+                sections={{
+                  guestList: false,
+                  addGift: false,
+                  pending: false,
+                  approved: false,
+                  privateRsvps: false,
+                }}
+              />
+              <div className="hero-actions">
+                <button className="button primary" type="button" onClick={createOnlineEvent}>
+                  Utworz wydarzenie online
+                </button>
+                <button className="button secondary" type="button" onClick={resetDraft}>
+                  Wyczysc wersje robocza
                 </button>
               </div>
-
-              {isOrganizerOpen ? (
-                <>
-                  <OrganizerPanel
-                    planner={planner}
-                    newGift={newGift}
-                    pendingReservations={pendingReservations}
-                    approvedReservations={approvedReservations}
-                    isRemote={route.isRemote}
-                    onEventChange={updateEvent}
-                    onSaveEventDetails={saveEventDetails}
-                    guestListText={guestListText}
-                    onGuestListTextChange={updateGuestListDraft}
-                    onSaveGuestList={saveGuestList}
-                    onNewGiftChange={setNewGift}
-                    onAddGift={addGift}
-                    onReservationStatusChange={updateReservationStatus}
-                  />
-                  <PartnerServices />
-                </>
-              ) : null}
             </section>
           ) : null}
-        </>
+
+          {createTab === 'guests' ? (
+            <section
+              className="panel glass-panel"
+              role="tabpanel"
+              aria-labelledby={`tab-${createTab}`}
+            >
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Krok 2</p>
+                  <h2>Lista zaproszonych</h2>
+                  <p>Wklej gosci hurtowo. Mozesz tez zostawic liste pusta.</p>
+                </div>
+              </div>
+              <OrganizerPanel
+                planner={planner}
+                newGift={newGift}
+                pendingReservations={[]}
+                approvedReservations={[]}
+                isRemote={false}
+                onEventChange={updateEvent}
+                onSaveEventDetails={(event) => event.preventDefault()}
+                guestListText={guestListText}
+                onGuestListTextChange={updateGuestListDraft}
+                onSaveGuestList={saveGuestList}
+                onNewGiftChange={setNewGift}
+                onAddGift={addGift}
+                onReservationStatusChange={updateReservationStatus}
+                sections={{
+                  eventDetails: false,
+                  addGift: false,
+                  pending: false,
+                  approved: false,
+                  privateRsvps: false,
+                }}
+              />
+            </section>
+          ) : null}
+
+          {createTab === 'gifts' ? (
+            <section
+              className="panel glass-panel"
+              role="tabpanel"
+              aria-labelledby={`tab-${createTab}`}
+            >
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Krok 3</p>
+                  <h2>Pomysly na prezenty</h2>
+                  <p>Dodaj pierwsze pozycje, rodzice zobacza je na publicznym linku.</p>
+                </div>
+              </div>
+              {planner.gifts.length ? (
+                <GiftList
+                  planner={planner}
+                  reservationsByGift={reservationsByGift}
+                  getGiftState={getGiftState}
+                />
+              ) : (
+                <p className="empty-tab-hint">Jeszcze brak prezentow na liscie.</p>
+              )}
+              <OrganizerPanel
+                planner={planner}
+                newGift={newGift}
+                pendingReservations={[]}
+                approvedReservations={[]}
+                isRemote={false}
+                onEventChange={updateEvent}
+                onSaveEventDetails={(event) => event.preventDefault()}
+                guestListText={guestListText}
+                onGuestListTextChange={updateGuestListDraft}
+                onSaveGuestList={saveGuestList}
+                onNewGiftChange={setNewGift}
+                onAddGift={addGift}
+                onReservationStatusChange={updateReservationStatus}
+                sections={{
+                  eventDetails: false,
+                  guestList: false,
+                  pending: false,
+                  approved: false,
+                  privateRsvps: false,
+                }}
+              />
+            </section>
+          ) : null}
+
+          {createTab === 'help' ? (
+            <section
+              className="panel glass-panel"
+              role="tabpanel"
+              aria-labelledby={`tab-${createTab}`}
+            >
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Dodatkowo</p>
+                  <h2>Pomoc w organizacji urodzin</h2>
+                </div>
+              </div>
+              <PartnerServices />
+            </section>
+          ) : null}
+        </div>
+      ) : (
+        <div className="tab-panel-stack">
+          {effectiveRemoteTab === 'info' ? (
+            <div
+              className="tab-panel"
+              role="tabpanel"
+              aria-labelledby={`tab-${effectiveRemoteTab}`}
+            >
+              <SharePanel
+                theme={planner.event.theme}
+                notes={planner.event.notes}
+                publicUrl={publicUrl}
+                manageUrl={manageUrl}
+                whatsappText={whatsappText}
+                onCopy={copyShareLink}
+              />
+            </div>
+          ) : null}
+
+          {effectiveRemoteTab === 'guests' ? (
+            <section
+              className="panel glass-panel tab-panel"
+              role="tabpanel"
+              aria-labelledby={`tab-${effectiveRemoteTab}`}
+            >
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Goscie</p>
+                  <h2>Lista zaproszonych i obecnosc</h2>
+                  <p>Imiona z listy organizatora sa widoczne dla wszystkich. Kontakty z listy nie sa udostepniane publicznie.</p>
+                </div>
+                {verifiedGuest ? (
+                  <span className="pill success">Zalogowano jako {verifiedGuest.name}</span>
+                ) : (
+                  <span className="pill">Wymagane potwierdzenie</span>
+                )}
+              </div>
+              <h3 className="tab-subheading">Zaproszeni</h3>
+              <PublicGuestList planner={planner} />
+              <RsvpSummaryPanel planner={planner} rsvpSummary={rsvpSummary} />
+              <h3 className="tab-subheading">Twoje dzialania</h3>
+              <GuestForms
+                planner={planner}
+                verifiedGuest={verifiedGuest}
+                guestName={guestName}
+                guestContact={guestContact}
+                verificationSent={verificationSent}
+                selectedGiftId={selectedGiftId}
+                reservationMessage={reservationMessage}
+                attendanceStatus={attendanceStatus}
+                attendanceAdults={attendanceAdults}
+                attendanceChildren={attendanceChildren}
+                attendanceNote={attendanceNote}
+                spamTrap={spamTrap}
+                onGuestNameChange={setGuestName}
+                onGuestContactChange={setGuestContact}
+                onSendVerification={sendVerification}
+                onConfirmVerification={confirmVerification}
+                onSelectedGiftChange={setSelectedGiftId}
+                onReservationMessageChange={setReservationMessage}
+                onAttendanceStatusChange={setAttendanceStatus}
+                onAttendanceAdultsChange={setAttendanceAdults}
+                onAttendanceChildrenChange={setAttendanceChildren}
+                onAttendanceNoteChange={setAttendanceNote}
+                onSpamTrapChange={setSpamTrap}
+                onRequestReservation={requestReservation}
+                onSubmitRsvp={submitRsvp}
+              />
+            </section>
+          ) : null}
+
+          {effectiveRemoteTab === 'gifts' ? (
+            <section
+              className="panel glass-panel tab-panel"
+              role="tabpanel"
+              aria-labelledby={`tab-${effectiveRemoteTab}`}
+            >
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Prezenty</p>
+                  <h2>Lista pomyslow na prezent</h2>
+                  <p>Po potwierdzeniu osoby mozesz zglosic rezerwacje w zakladce Goscie.</p>
+                </div>
+              </div>
+              {planner.gifts.length ? (
+                <GiftList
+                  planner={planner}
+                  reservationsByGift={reservationsByGift}
+                  getGiftState={getGiftState}
+                />
+              ) : (
+                <p className="empty-tab-hint">Organizator jeszcze nie dodal pomyslow na prezenty.</p>
+              )}
+            </section>
+          ) : null}
+
+          {effectiveRemoteTab === 'help' ? (
+            <section
+              className="panel glass-panel tab-panel"
+              role="tabpanel"
+              aria-labelledby={`tab-${effectiveRemoteTab}`}
+            >
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Partnerzy</p>
+                  <h2>Pomoc w organizacji urodzin</h2>
+                </div>
+              </div>
+              <PartnerServices />
+            </section>
+          ) : null}
+
+          {effectiveRemoteTab === 'organizer' && canManage ? (
+            <section
+              className="panel glass-panel organizer-panel tab-panel"
+              role="tabpanel"
+              aria-labelledby="tab-organizer"
+              id="organizer"
+            >
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Prywatny panel</p>
+                  <h2>Zarzadzanie wydarzeniem</h2>
+                  <p>Ta zakladka jest dostepna tylko z linku organizatora z tokenem.</p>
+                </div>
+              </div>
+              <OrganizerPanel
+                planner={planner}
+                newGift={newGift}
+                pendingReservations={pendingReservations}
+                approvedReservations={approvedReservations}
+                isRemote={route.isRemote}
+                onEventChange={updateEvent}
+                onSaveEventDetails={saveEventDetails}
+                guestListText={guestListText}
+                onGuestListTextChange={updateGuestListDraft}
+                onSaveGuestList={saveGuestList}
+                onNewGiftChange={setNewGift}
+                onAddGift={addGift}
+                onReservationStatusChange={updateReservationStatus}
+              />
+            </section>
+          ) : null}
+        </div>
       )}
 
-      <section className="footer-panel">
+      <section className="footer-panel glass-panel">
         <p>
           {route.isRemote
-            ? 'To wydarzenie korzysta z Netlify Functions i Netlify Blobs, wiec rodzice widza wspolna liste.'
-            : 'To produkcyjny flow tworzenia wydarzenia. Demo jest dostepne tylko jako przykladowy seed formularza.'}
+            ? 'Dane wydarzenia: Netlify Functions + Netlify Blobs.'
+            : 'Po utworzeniu wydarzenia otrzymasz linki do udostepnienia i zarzadzania.'}
         </p>
       </section>
     </main>

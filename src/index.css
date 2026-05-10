@@ -1,22 +1,24 @@
 :root {
-  --text: #5b5370;
-  --text-h: #24123f;
-  --bg: #fff7fd;
-  --panel: rgba(255, 255, 255, 0.9);
-  --card: #ffffff;
-  --muted: #f4edff;
-  --input: #fffaff;
-  --border: #eadcff;
-  --code-bg: #f4edff;
-  --accent: #ff4fa3;
-  --accent-2: #7c5cff;
-  --accent-3: #16c7b7;
-  --sunny: #ffd166;
+  --text: #4b4463;
+  --text-h: #1a0f2e;
+  --bg: #f6f3ff;
+  --panel: rgba(255, 255, 255, 0.82);
+  --card: rgba(255, 255, 255, 0.94);
+  --muted: rgba(124, 92, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.95);
+  --border: rgba(124, 92, 255, 0.18);
+  --code-bg: rgba(124, 92, 255, 0.1);
+  --accent: #e93d8c;
+  --accent-2: #6b4dff;
+  --accent-3: #12b8a8;
+  --sunny: #ffc24d;
   --button-text: #ffffff;
-  --button-secondary: #fff0f7;
+  --button-secondary: rgba(255, 255, 255, 0.92);
   --shadow:
-    rgba(112, 78, 161, 0.18) 0 12px 24px -10px, rgba(255, 79, 163, 0.12) 0 4px 10px -6px;
-  --soft-shadow: rgba(112, 78, 161, 0.12) 0 20px 70px -40px;
+    rgba(45, 24, 82, 0.12) 0 18px 40px -18px, rgba(107, 77, 255, 0.14) 0 8px 24px -16px;
+  --soft-shadow: rgba(45, 24, 82, 0.1) 0 24px 80px -36px;
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.55);
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -48,10 +50,10 @@
 body {
   margin: 0;
   background:
-    radial-gradient(circle at 12% 8%, rgba(255, 209, 102, 0.55), transparent 16rem),
-    radial-gradient(circle at 88% 18%, rgba(22, 199, 183, 0.22), transparent 18rem),
-    radial-gradient(circle at 45% 0%, rgba(255, 79, 163, 0.18), transparent 22rem),
-    linear-gradient(180deg, #fff7fd 0%, #f5f0ff 54%, #eefcff 100%);
+    radial-gradient(ellipse 120% 80% at 0% -10%, rgba(233, 61, 140, 0.16), transparent 55%),
+    radial-gradient(ellipse 90% 60% at 100% 0%, rgba(107, 77, 255, 0.2), transparent 50%),
+    radial-gradient(circle at 50% 100%, rgba(18, 184, 168, 0.12), transparent 45%),
+    linear-gradient(165deg, #faf8ff 0%, #f3f0ff 38%, #eef8ff 100%);
 }
 
 h1,

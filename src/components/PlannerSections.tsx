@@ -117,6 +117,29 @@ export function SharePanel({
   )
 }
 
+export function PublicGuestList({ planner }: { planner: PlannerState }) {
+  if (!planner.guestList.length) {
+    return (
+      <div className="guest-list-public empty">
+        <p>
+          Organizator nie dodal jeszcze listy zaproszonych albo lista jest otwarta dla wszystkich
+          zaproszonych rodzicow.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <ul className="guest-list-public">
+      {planner.guestList.map((guest) => (
+        <li className="guest-list-item" key={guest.id}>
+          <span className="guest-list-name">{guest.name}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export function GiftList({
   planner,
   reservationsByGift,
@@ -398,6 +421,24 @@ export function GuestForms({
   )
 }
 
+export type OrganizerPanelSections = {
+  eventDetails: boolean
+  guestList: boolean
+  addGift: boolean
+  pending: boolean
+  approved: boolean
+  privateRsvps: boolean
+}
+
+const defaultOrganizerSections: OrganizerPanelSections = {
+  eventDetails: true,
+  guestList: true,
+  addGift: true,
+  pending: true,
+  approved: true,
+  privateRsvps: true,
+}
+
 export function OrganizerPanel({
   planner,
   newGift,
@@ -412,6 +453,7 @@ export function OrganizerPanel({
   onNewGiftChange,
   onAddGift,
   onReservationStatusChange,
+  sections = defaultOrganizerSections,
 }: {
   planner: PlannerState
   newGift: Omit<Gift, 'id'>
@@ -426,9 +468,13 @@ export function OrganizerPanel({
   onNewGiftChange: (gift: Omit<Gift, 'id'>) => void
   onAddGift: (event: FormEvent<HTMLFormElement>) => void
   onReservationStatusChange: (reservationId: string, status: ReservationStatus) => void
+  sections?: Partial<OrganizerPanelSections>
 }) {
+  const show: OrganizerPanelSections = { ...defaultOrganizerSections, ...sections }
+
   return (
     <div className="organizer-grid">
+      {show.eventDetails ? (
       <form className="form-card" onSubmit={onSaveEventDetails}>
         <h3>Szczegoly wydarzenia</h3>
         <label>
@@ -476,7 +522,9 @@ export function OrganizerPanel({
           </button>
         ) : null}
       </form>
+      ) : null}
 
+      {show.guestList ? (
       <form className="form-card guest-list-card" onSubmit={onSaveGuestList}>
         <h3>Lista zaproszonych gosci</h3>
         <p className="form-hint">
@@ -499,7 +547,9 @@ export function OrganizerPanel({
           {isRemote ? 'Zapisz liste gosci online' : 'Zastosuj liste gosci'}
         </button>
       </form>
+      ) : null}
 
+      {show.addGift ? (
       <form className="form-card" onSubmit={onAddGift}>
         <h3>Dodaj prezent</h3>
         <label>
@@ -535,7 +585,9 @@ export function OrganizerPanel({
           Dodaj do listy
         </button>
       </form>
+      ) : null}
 
+      {show.pending ? (
       <div className="form-card approvals">
         <h3>Zgloszenia do zatwierdzenia</h3>
         {pendingReservations.length ? (
@@ -571,7 +623,9 @@ export function OrganizerPanel({
           <p>Brak oczekujacych zgloszen.</p>
         )}
       </div>
+      ) : null}
 
+      {show.approved ? (
       <div className="form-card approvals">
         <h3>Zatwierdzone rezerwacje</h3>
         {approvedReservations.length ? (
@@ -597,7 +651,9 @@ export function OrganizerPanel({
           <p>Jeszcze nie ma zatwierdzonych rezerwacji.</p>
         )}
       </div>
+      ) : null}
 
+      {show.privateRsvps ? (
       <div className="form-card approvals full-width">
         <h3>Lista obecnosci</h3>
         {planner.rsvps.length ? (
@@ -610,6 +666,7 @@ export function OrganizerPanel({
           <p>Brak odpowiedzi od gosci.</p>
         )}
       </div>
+      ) : null}
     </div>
   )
 }
