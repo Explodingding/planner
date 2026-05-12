@@ -921,6 +921,38 @@ textarea {
   gap: 14px;
 }
 
+.service-grid--preview {
+  opacity: 0.88;
+}
+
+.help-wip-banner {
+  margin: 0 0 22px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(138, 93, 0, 0.35);
+  background: linear-gradient(135deg, rgba(255, 241, 184, 0.45), rgba(255, 255, 255, 0.55));
+}
+
+.help-wip-banner-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8a5d00;
+}
+
+.help-wip-banner p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-h);
+}
+
+.service-card--unavailable {
+  position: relative;
+}
+
 .service-card {
   display: grid;
   gap: 12px;

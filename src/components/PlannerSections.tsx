@@ -948,17 +948,25 @@ function PrivateRsvpCard({ rsvp }: { rsvp: Rsvp }) {
 export function PartnerServices() {
   return (
     <div className="form-card approvals full-width">
+      <div className="help-wip-banner" role="status">
+        <p className="help-wip-banner-title">Strona w budowie</p>
+        <p>
+          Ta zakladka pokazuje planowane uslugi partnerskie. <strong>Funkcje nie sa jeszcze dostepne</strong> —
+          nie da sie ich zamowic ani zarezerwowac z poziomu aplikacji. Wrocimy z pelna obsluga, gdy marketplace
+          bedzie gotowy.
+        </p>
+      </div>
       <h3>Pomoc w organizacji urodzin</h3>
       <p>
         Pierwszy szkic marketplace: lokalne firmy moga byc partnerami aplikacji, a
         organizator docelowo wybierze uslugi bez wychodzenia z plannera.
       </p>
-      <div className="service-grid">
+      <div className="service-grid service-grid--preview">
         {ORGANIZER_SERVICES.map((service) => (
-          <article className="service-card" key={service.title}>
+          <article className="service-card service-card--unavailable" key={service.title}>
             <h4>{service.title}</h4>
             <p>{service.description}</p>
-            <button className="button secondary" type="button">
+            <button className="button secondary" type="button" disabled title="Funkcja niedostepna w tej wersji">
               {service.action}
             </button>
           </article>
