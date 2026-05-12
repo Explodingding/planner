@@ -141,8 +141,28 @@ function sanitizeGuestListForApi(list: Guest[]): Guest[] {
 }
 
 async function parseApiResponse(response: Response): Promise<ApiResponse> {
-  const body = (await response.json()) as ApiResponse
-  if (!response.ok) throw new Error(body.error ?? 'Nie udalo sie zapisac danych.')
+  const text = await response.text()
+  let body: ApiResponse = {}
+  if (text) {
+    try {
+      body = JSON.parse(text) as ApiResponse
+    } catch {
+      throw new Error(
+        response.ok
+          ? 'Serwer zwrocil nieprawidlowa odpowiedz (nie JSON).'
+          : `Blad serwera (${response.status}). Sprawdz czy funkcja Netlify jest wdrozona i czy adres API jest poprawny.`,
+      )
+    }
+  }
+
+  if (!response.ok) {
+    const hint =
+      response.status === 503
+        ? ' Sprawdz w panelu Netlify zmienna STRIPE_SECRET_KEY.'
+        : ''
+    throw new Error((body.error && String(body.error)) || `Zapytanie nie powiodlo sie (${response.status}).${hint}`)
+  }
+
   return body
 }
 
