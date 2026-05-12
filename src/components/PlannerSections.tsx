@@ -887,19 +887,30 @@ export function OrganizerPanel({
         {approvedReservations.length ? (
           approvedReservations.map((reservation) => {
             const gift = planner.gifts.find((item) => item.id === reservation.giftId)
+            const isBought = reservation.status === 'bought'
 
             return (
-              <article className="approval-card" key={reservation.id}>
+              <article
+                className={`approval-card${isBought ? ' approval-card--bought' : ''}`}
+                key={reservation.id}
+              >
                 <p className="gift-meta">{gift?.title}</p>
                 <h4>{reservation.guestName}</h4>
                 <p>{reservation.contact}</p>
-                <button
-                  className="button secondary"
-                  type="button"
-                  onClick={() => onReservationStatusChange(reservation.id, 'bought')}
-                >
-                  Oznacz jako kupiony
-                </button>
+                {isBought ? (
+                  <div className="reservation-bought-block">
+                    <span className="pill state-kupiony">Kupiony</span>
+                    <p className="reservation-bought-text">Ten prezent jest oznaczony jako kupiony.</p>
+                  </div>
+                ) : (
+                  <button
+                    className="button secondary"
+                    type="button"
+                    onClick={() => onReservationStatusChange(reservation.id, 'bought')}
+                  >
+                    Oznacz jako kupiony
+                  </button>
+                )}
               </article>
             )
           })

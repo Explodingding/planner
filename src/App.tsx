@@ -374,7 +374,7 @@ function App() {
     })
   }, [route.isRemote])
 
-  async function persistManagedAction(body: ManagedActionPayload) {
+  async function persistManagedAction(body: ManagedActionPayload, successMessage = 'Zapisano zmiany online.') {
     if (!route.eventId || !route.organizerToken) {
       throw new Error('Do zapisu zmian potrzebny jest prywatny link organizatora z tokenem.')
     }
@@ -385,7 +385,7 @@ function App() {
       token: route.organizerToken,
     } as EventApiRequest)
 
-    applyRemoteEvent(event, 'Zapisano zmiany online.')
+    applyRemoteEvent(event, successMessage)
   }
 
   function getGiftState(giftId: string) {
@@ -637,8 +637,22 @@ function App() {
   async function updateReservationStatus(reservationId: string, status: ReservationStatus) {
     if (!route.isRemote) return
 
+    const statusMessages: Partial<Record<ReservationStatus, string>> = {
+      bought: 'Prezent oznaczony jako kupiony.',
+      approved: 'Rezerwacja zatwierdzona.',
+      rejected: 'Rezerwacja odrzucona.',
+    }
+
     try {
-      await persistManagedAction({ action: 'updateReservationStatus', reservationId, status })
+      await persistManagedAction(
+        { action: 'updateReservationStatus', reservationId, status },
+        statusMessages[status] ?? 'Zapisano zmiany online.',
+      )
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          document.getElementById('app-status-message')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        })
+      })
     } catch (error) {
       setApiError((error as Error).message)
     }
@@ -788,7 +802,11 @@ function App() {
         />
       </section>
 
-      {apiMessage ? <p className="status-message">{apiMessage}</p> : null}
+      {apiMessage ? (
+        <p className="status-message" id="app-status-message" role="status" aria-live="polite">
+          {apiMessage}
+        </p>
+      ) : null}
       {apiError ? <p className="error-message">{apiError}</p> : null}
 
       {!route.isRemote ? (

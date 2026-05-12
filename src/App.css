@@ -901,6 +901,26 @@ textarea {
   padding: 16px;
 }
 
+.approval-card--bought {
+  border-color: rgba(181, 22, 101, 0.28);
+  background: linear-gradient(155deg, rgba(255, 225, 240, 0.35), var(--card));
+}
+
+.reservation-bought-block {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 4px;
+}
+
+.reservation-bought-text {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
 .full-width {
   grid-column: 1 / -1;
 }
