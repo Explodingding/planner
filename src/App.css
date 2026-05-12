@@ -52,7 +52,7 @@
   height: 44px;
   border-radius: 14px;
   font-size: 22px;
-  background: linear-gradient(135deg, rgba(233, 61, 140, 0.2), rgba(107, 77, 255, 0.22));
+  background: linear-gradient(135deg, rgba(13, 148, 136, 0.22), rgba(37, 99, 235, 0.2));
   border: 1px solid var(--glass-border);
 }
 
@@ -81,7 +81,7 @@
   padding: 4px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.45);
-  border: 1px solid rgba(124, 92, 255, 0.12);
+  border: 1px solid rgba(37, 99, 235, 0.12);
 }
 
 .app-tab {
@@ -107,7 +107,7 @@
 .app-tab.is-active {
   color: var(--button-text);
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  box-shadow: 0 8px 22px -12px rgba(107, 77, 255, 0.55);
+  box-shadow: 0 8px 22px -12px rgba(37, 99, 235, 0.35);
 }
 
 .hero-strip {
@@ -125,7 +125,7 @@
   position: absolute;
   inset: -40% 55% auto -20%;
   height: 140%;
-  background: radial-gradient(circle, rgba(233, 61, 140, 0.12), transparent 62%);
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.1), transparent 62%);
   pointer-events: none;
 }
 
@@ -265,8 +265,8 @@
 }
 
 .guest-list-public-table tbody tr.guest-list-rsvp-row--no > td {
-  background: linear-gradient(155deg, rgba(255, 225, 240, 0.65), rgba(255, 225, 240, 0.25));
-  border-bottom-color: rgba(181, 22, 101, 0.18);
+  background: linear-gradient(155deg, rgba(226, 232, 240, 0.65), rgba(241, 245, 249, 0.35));
+  border-bottom-color: rgba(71, 85, 105, 0.2);
 }
 
 .guest-list-public-table tbody tr.guest-list-rsvp-row--awaiting > td {
@@ -581,13 +581,13 @@
 }
 
 .gift-card--zarezerwowany {
-  background: linear-gradient(155deg, rgba(236, 230, 255, 0.72), var(--card));
-  border-color: rgba(87, 55, 189, 0.32);
+  background: linear-gradient(155deg, rgba(219, 234, 254, 0.82), var(--card));
+  border-color: rgba(37, 99, 235, 0.28);
 }
 
 .gift-card--kupiony {
-  background: linear-gradient(155deg, rgba(255, 225, 240, 0.68), var(--card));
-  border-color: rgba(181, 22, 101, 0.28);
+  background: linear-gradient(155deg, rgba(204, 251, 241, 0.78), var(--card));
+  border-color: rgba(13, 148, 136, 0.32);
 }
 
 .gift-ideas-guide {
@@ -737,13 +737,13 @@
 }
 
 .state-zarezerwowany {
-  background: #ece6ff;
-  color: #5737bd;
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
 .state-kupiony {
-  background: #ffe1f0;
-  color: #b51665;
+  background: #ccfbf1;
+  color: #0f766e;
 }
 
 .attendance-yes {
@@ -757,8 +757,8 @@
 }
 
 .attendance-no {
-  background: #ffe1f0;
-  color: #b51665;
+  background: #e2e8f0;
+  color: #334155;
 }
 
 .rsvp-public-tile.attendance-tile-yes {
@@ -772,8 +772,8 @@
 }
 
 .rsvp-public-tile.attendance-tile-no {
-  background: linear-gradient(155deg, rgba(255, 225, 240, 0.62), var(--card));
-  border-color: rgba(181, 22, 101, 0.3);
+  background: linear-gradient(155deg, rgba(226, 232, 240, 0.75), var(--card));
+  border-color: rgba(71, 85, 105, 0.28);
 }
 
 .rsvp-overview {
@@ -902,8 +902,8 @@ textarea {
 }
 
 .approval-card--bought {
-  border-color: rgba(181, 22, 101, 0.28);
-  background: linear-gradient(155deg, rgba(255, 225, 240, 0.35), var(--card));
+  border-color: rgba(13, 148, 136, 0.3);
+  background: linear-gradient(155deg, rgba(204, 251, 241, 0.45), var(--card));
 }
 
 .reservation-bought-block {
@@ -980,7 +980,7 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 22px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 240, 247, 0.72)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(238, 246, 251, 0.75)),
     var(--card);
 }
 

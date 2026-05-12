@@ -1,24 +1,32 @@
 :root {
-  --text: #4b4463;
-  --text-h: #1a0f2e;
-  --bg: #f6f3ff;
-  --panel: rgba(255, 255, 255, 0.82);
+  /* Paleta v2: baza zielen / blekit, akcenty CTA teal → niebieski; mniej rozowego i fioletu w tle. */
+  --text: #3d5366;
+  --text-h: #12283a;
+  --bg: #eef5f7;
+
+  --panel: rgba(255, 255, 255, 0.86);
   --card: rgba(255, 255, 255, 0.94);
-  --muted: rgba(124, 92, 255, 0.08);
-  --input: rgba(255, 255, 255, 0.95);
-  --border: rgba(124, 92, 255, 0.18);
-  --code-bg: rgba(124, 92, 255, 0.1);
-  --accent: #e93d8c;
-  --accent-2: #6b4dff;
-  --accent-3: #12b8a8;
-  --sunny: #ffc24d;
+  --muted: rgba(13, 148, 136, 0.08);
+  --input: rgba(255, 255, 255, 0.97);
+  --border: rgba(37, 99, 235, 0.12);
+  --code-bg: rgba(37, 99, 235, 0.07);
+
+  --accent: #0d9488;
+  --accent-2: #2563eb;
+  --accent-3: #5eead4;
+  --warm: #c2416c;
+  --sunny: #f59e0b;
+
   --button-text: #ffffff;
-  --button-secondary: rgba(255, 255, 255, 0.92);
+  --button-secondary: rgba(255, 255, 255, 0.94);
+
   --shadow:
-    rgba(45, 24, 82, 0.12) 0 18px 40px -18px, rgba(107, 77, 255, 0.14) 0 8px 24px -16px;
-  --soft-shadow: rgba(45, 24, 82, 0.1) 0 24px 80px -36px;
-  --glass: rgba(255, 255, 255, 0.72);
-  --glass-border: rgba(255, 255, 255, 0.55);
+    rgba(15, 40, 60, 0.1) 0 18px 40px -18px,
+    rgba(37, 99, 235, 0.09) 0 8px 24px -16px;
+  --soft-shadow: rgba(15, 40, 60, 0.08) 0 24px 80px -36px;
+
+  --glass: rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.62);
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -50,10 +58,10 @@
 body {
   margin: 0;
   background:
-    radial-gradient(ellipse 120% 80% at 0% -10%, rgba(233, 61, 140, 0.16), transparent 55%),
-    radial-gradient(ellipse 90% 60% at 100% 0%, rgba(107, 77, 255, 0.2), transparent 50%),
-    radial-gradient(circle at 50% 100%, rgba(18, 184, 168, 0.12), transparent 45%),
-    linear-gradient(165deg, #faf8ff 0%, #f3f0ff 38%, #eef8ff 100%);
+    radial-gradient(ellipse 115% 75% at 0% -5%, rgba(37, 99, 235, 0.11), transparent 58%),
+    radial-gradient(ellipse 95% 55% at 100% 5%, rgba(13, 148, 136, 0.12), transparent 52%),
+    radial-gradient(circle at 50% 100%, rgba(94, 234, 212, 0.1), transparent 46%),
+    linear-gradient(168deg, #f3faf9 0%, #eef6fb 42%, #e9f2ff 100%);
 }
 
 h1,
