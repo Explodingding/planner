@@ -3,6 +3,24 @@
   publish = "dist"
   functions = "netlify/functions"
 
+# Domena z „ó” (IDN) — hosty w punycode, żeby Netlify pewnie dopasował przekierowanie
+[[redirects]]
+  from = "https://www.xn--listaprezentw-mlb.pl/*"
+  to = "https://xn--listaprezentw-mlb.pl/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "http://www.xn--listaprezentw-mlb.pl/*"
+  to = "https://xn--listaprezentw-mlb.pl/:splat"
+  status = 301
+  force = true
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

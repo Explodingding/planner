@@ -1,0 +1,8 @@
+# https://listaprezentów.pl — Lista Prezentów
+User-agent: *
+Allow: /
+
+# Panel organizatora — bez indeksowania
+Disallow: /manage/
+
+Sitemap: https://listaprezentów.pl/sitemap.xml
