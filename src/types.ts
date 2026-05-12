@@ -4,6 +4,7 @@ export type EventStatus = 'active' | 'archived'
 export type EventVisibility = 'public_link'
 export type ApiAction =
   | 'create'
+  | 'createEventCheckout'
   | 'updateEvent'
   | 'updateGuestList'
   | 'addGift'
@@ -99,6 +100,8 @@ export type VerifiedGuest = {
 export type ApiResponse = {
   event?: PublicEventRecord
   error?: string
+  /** Tylko dla `createEventCheckout` — adres Stripe Checkout. */
+  checkoutUrl?: string
 }
 
 export type CreateEventRequest = {
@@ -106,6 +109,13 @@ export type CreateEventRequest = {
   planner: PlannerState
   organizerName: string
   organizerContact: string
+  /** Identyfikator sesji Stripe Checkout po udanej płatności (query `session_id`). */
+  stripeCheckoutSessionId: string
+  spamTrap?: string
+}
+
+export type CreateEventCheckoutRequest = {
+  action: 'createEventCheckout'
   spamTrap?: string
 }
 
@@ -150,4 +160,8 @@ export type PublicEventRequest =
       spamTrap?: string
     }
 
-export type EventApiRequest = CreateEventRequest | ManagedEventRequest | PublicEventRequest
+export type EventApiRequest =
+  | CreateEventRequest
+  | CreateEventCheckoutRequest
+  | ManagedEventRequest
+  | PublicEventRequest

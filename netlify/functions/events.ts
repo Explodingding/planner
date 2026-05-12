@@ -1,6 +1,8 @@
 import { getStore } from '@netlify/blobs'
+import Stripe from 'stripe'
 import type {
   ApiResponse,
+  CreateEventRequest,
   EventApiRequest,
   EventDetails,
   EventRecord,
@@ -21,6 +23,9 @@ const MAX_GIFTS = 40
 const MAX_GUESTS = 120
 const MAX_RSVPS = 120
 const MAX_RESERVATIONS = 120
+
+/** Jednorazowa opłata za utworzenie wydarzenia (PLN → grosze). */
+const EVENT_CREATE_AMOUNT_GROSZE = 500
 
 class ApiError extends Error {
   constructor(
@@ -92,6 +97,82 @@ function getStoreKey(id: string) {
 
 function getOrigin(req: Request) {
   return new URL(req.url).origin
+}
+
+let stripeSingleton: Stripe | null = null
+
+function getStripe(): Stripe {
+  if (!stripeSingleton) {
+    const key = process.env.STRIPE_SECRET_KEY
+    if (!key) {
+      throw new ApiError('Platnosci nie sa skonfigurowane (STRIPE_SECRET_KEY).', 503)
+    }
+    stripeSingleton = new Stripe(key)
+  }
+  return stripeSingleton
+}
+
+function getPublicSiteBaseUrl(req: Request): string {
+  const fromEnv = (process.env.URL || process.env.DEPLOY_PRIME_URL || '').trim()
+  if (fromEnv) return fromEnv.replace(/\/$/, '')
+
+  const referer = req.headers.get('referer') || req.headers.get('origin') || ''
+  if (referer) {
+    try {
+      return new URL(referer).origin
+    } catch {
+      /* empty */
+    }
+  }
+
+  throw new ApiError('Brak adresu strony — ustaw zmienna URL na Netlify.', 500)
+}
+
+function stripeUsedSessionKey(sessionId: string) {
+  return `stripe-checkout-used/${sessionId}`
+}
+
+async function isStripeCheckoutSessionConsumed(sessionId: string): Promise<boolean> {
+  const store = getStore(STORE_NAME)
+  const hit = await store.get(stripeUsedSessionKey(sessionId), { type: 'json' })
+  return Boolean(hit)
+}
+
+async function markStripeCheckoutSessionConsumed(sessionId: string) {
+  const store = getStore(STORE_NAME)
+  await store.setJSON(stripeUsedSessionKey(sessionId), { consumedAt: new Date().toISOString() })
+}
+
+async function assertStripeCheckoutPaidForEventCreate(sessionId: string) {
+  const cleanId = cleanText(sessionId, 200)
+  if (!cleanId.startsWith('cs_')) {
+    throw new ApiError('Nieprawidlowy identyfikator sesji platnosci.', 400)
+  }
+
+  if (await isStripeCheckoutSessionConsumed(cleanId)) {
+    throw new ApiError('Ta platnosc zostala juz wykorzystana do utworzenia wydarzenia.', 403)
+  }
+
+  const stripe = getStripe()
+  const session = await stripe.checkout.sessions.retrieve(cleanId)
+
+  if (session.mode !== 'payment') {
+    throw new ApiError('Nieprawidlowa sesja platnosci.', 400)
+  }
+  if (session.payment_status !== 'paid') {
+    throw new ApiError('Platnosc nie zostala zakonczona.', 402)
+  }
+  if ((session.metadata?.purpose ?? '') !== 'event_create') {
+    throw new ApiError('Platnosc ma inny cel niz utworzenie wydarzenia.', 400)
+  }
+  const total = session.amount_total ?? 0
+  if (total !== EVENT_CREATE_AMOUNT_GROSZE) {
+    throw new ApiError('Niezgodna kwota platnosci.', 400)
+  }
+  const currency = (session.currency ?? '').toLowerCase()
+  if (currency !== 'pln') {
+    throw new ApiError('Niezgodna waluta platnosci.', 400)
+  }
 }
 
 function cleanText(value: unknown, maxLength: number) {
@@ -459,14 +540,54 @@ async function handleGet(req: Request) {
   })
 }
 
+async function handleCreateEventCheckout(req: Request, body: EventApiRequest) {
+  if (body.action !== 'createEventCheckout') throw new ApiError('Nieprawidlowa akcja.')
+  assertNoSpam(body.spamTrap)
+
+  const base = getPublicSiteBaseUrl(req)
+  const stripe = getStripe()
+
+  const session = await stripe.checkout.sessions.create({
+    mode: 'payment',
+    line_items: [
+      {
+        price_data: {
+          currency: 'pln',
+          product_data: {
+            name: 'Utworzenie wydarzenia online — Lista Prezentów',
+            description: 'Jednorazowa oplata za utworzenie wydarzenia i dostep do panelu organizatora.',
+          },
+          unit_amount: EVENT_CREATE_AMOUNT_GROSZE,
+        },
+        quantity: 1,
+      },
+    ],
+    metadata: {
+      purpose: 'event_create',
+    },
+    success_url: `${base}/?eventCheckout=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${base}/?eventCheckout=cancel`,
+  })
+
+  if (!session.url) {
+    throw new ApiError('Nie udalo sie utworzyc sesji platnosci.', 500)
+  }
+
+  return json({ checkoutUrl: session.url })
+}
+
 async function handleCreate(req: Request, body: EventApiRequest) {
   if (body.action !== 'create') throw new ApiError('Nieprawidlowa akcja.')
   assertNoSpam(body.spamTrap)
 
-  const planner = validatePlanner(body.planner)
+  const payload = body as CreateEventRequest
+  const sessionId = requireText(payload.stripeCheckoutSessionId, 'Identyfikator platnosci', 200)
+  await assertStripeCheckoutPaidForEventCreate(sessionId)
+
+  const planner = validatePlanner(payload.planner)
   const now = new Date().toISOString()
-  const createdBy = `${requireText(body.organizerName, 'Imie organizatora', 120)} <${requireText(
-    body.organizerContact,
+  const createdBy = `${requireText(payload.organizerName, 'Imie organizatora', 120)} <${requireText(
+    payload.organizerContact,
     'Kontakt organizatora',
     160,
   )}>`
@@ -485,6 +606,12 @@ async function handleCreate(req: Request, body: EventApiRequest) {
   }
 
   await getStore(STORE_NAME).setJSON(getStoreKey(record.id), record)
+
+  try {
+    await markStripeCheckoutSessionConsumed(sessionId)
+  } catch (error) {
+    console.error('Nie udalo sie oznaczyc sesji Stripe jako wykorzystanej', error)
+  }
 
   return json({
     event: stripPrivateData(record, req, true),
@@ -600,6 +727,7 @@ async function handleManagedWrite(req: Request, body: EventApiRequest) {
 async function handlePost(req: Request) {
   const body = (await req.json()) as EventApiRequest
 
+  if (body.action === 'createEventCheckout') return handleCreateEventCheckout(req, body)
   if (body.action === 'create') return handleCreate(req, body)
   if (body.action === 'reserveGift' || body.action === 'submitRsvp') {
     return handlePublicWrite(req, body)

@@ -29,6 +29,8 @@ import { GIFT_CATEGORIES } from './constants'
 import './App.css'
 
 const DRAFT_STORAGE_KEY = 'prezentownik-production-draft'
+/** Dane organizatora zachowane przed przekierowaniem do Stripe Checkout. */
+const CHECKOUT_ORGANIZER_KEY = 'prezentownik-checkout-organizer'
 const API_URL = '/.netlify/functions/events'
 
 type RouteState = {
@@ -138,9 +140,14 @@ function sanitizeGuestListForApi(list: Guest[]): Guest[] {
   return list.filter(guestListRowComplete)
 }
 
-async function readApiResponse(response: Response) {
+async function parseApiResponse(response: Response): Promise<ApiResponse> {
   const body = (await response.json()) as ApiResponse
   if (!response.ok) throw new Error(body.error ?? 'Nie udalo sie zapisac danych.')
+  return body
+}
+
+async function readApiResponse(response: Response) {
+  const body = await parseApiResponse(response)
   if (!body.event) throw new Error('Brak danych wydarzenia w odpowiedzi API.')
 
   return body.event
@@ -257,6 +264,95 @@ function App() {
       body: JSON.stringify(body),
     }).then(readApiResponse)
   }
+
+  useEffect(() => {
+    if (route.isRemote) return
+
+    queueMicrotask(() => {
+      const params = new URLSearchParams(window.location.search)
+      const checkout = params.get('eventCheckout')
+
+      if (checkout === 'cancel') {
+        window.history.replaceState({}, '', window.location.pathname)
+        setApiMessage('')
+        setApiError('Platnosc zostala anulowana. Sprobuj ponownie.')
+        return
+      }
+
+      if (checkout !== 'success') return
+
+      const sessionId = params.get('session_id')
+      if (!sessionId) return
+
+      const doneKey = `event-checkout-done-${sessionId}`
+      if (sessionStorage.getItem(doneKey)) {
+        window.history.replaceState({}, '', window.location.pathname)
+        return
+      }
+
+      const inflightKey = `event-checkout-inflight-${sessionId}`
+      if (sessionStorage.getItem(inflightKey)) return
+      sessionStorage.setItem(inflightKey, '1')
+
+      const pendingRaw = localStorage.getItem(CHECKOUT_ORGANIZER_KEY)
+      if (!pendingRaw) {
+        setApiError(
+          'Brak zapisanych danych organizatora. Uzupelnij formularz i rozpocznij plate od nowa.',
+        )
+        sessionStorage.removeItem(inflightKey)
+        return
+      }
+
+      let org: { organizerName: string; organizerContact: string }
+      try {
+        org = JSON.parse(pendingRaw) as { organizerName: string; organizerContact: string }
+      } catch {
+        setApiError('Nieprawidlowe dane organizatora w przegladarce.')
+        sessionStorage.removeItem(inflightKey)
+        return
+      }
+
+      setOrganizerName(org.organizerName)
+      setOrganizerContact(org.organizerContact)
+
+      const plannerSnapshot = loadPlannerDraft()
+
+      void (async () => {
+        try {
+          setApiMessage('Tworze wydarzenie online...')
+          setApiError('')
+          const event = await callEventApi({
+            action: 'create',
+            planner: {
+              ...plannerSnapshot,
+              guestList: sanitizeGuestListForApi(plannerSnapshot.guestList),
+            },
+            organizerName: org.organizerName,
+            organizerContact: org.organizerContact,
+            stripeCheckoutSessionId: sessionId,
+            spamTrap: '',
+          })
+
+          sessionStorage.setItem(doneKey, '1')
+          sessionStorage.removeItem(inflightKey)
+          localStorage.removeItem(CHECKOUT_ORGANIZER_KEY)
+          localStorage.removeItem(DRAFT_STORAGE_KEY)
+          window.history.replaceState({}, '', window.location.pathname)
+
+          if (event.manageUrl) {
+            window.location.href = event.manageUrl
+            return
+          }
+
+          applyRemoteEvent(event, 'Utworzono wydarzenie online.')
+        } catch (error) {
+          setApiMessage('')
+          setApiError((error as Error).message)
+          sessionStorage.removeItem(inflightKey)
+        }
+      })()
+    })
+  }, [route.isRemote])
 
   async function persistManagedAction(body: ManagedActionPayload) {
     if (!route.eventId || !route.organizerToken) {
@@ -412,32 +508,30 @@ function App() {
     setApiError('')
   }
 
-  async function createOnlineEvent() {
+  async function startPaidOnlineEventCreation() {
     if (!validateCreateOnlineEvent()) return
 
     try {
-      setApiMessage('Tworze wydarzenie online...')
+      localStorage.setItem(
+        CHECKOUT_ORGANIZER_KEY,
+        JSON.stringify({
+          organizerName: organizerName.trim(),
+          organizerContact: organizerContact.trim(),
+        }),
+      )
+      setApiMessage('Przekierowanie do bezpiecznej platnosci (Stripe)...')
       setApiError('')
-      const event = await callEventApi({
-        action: 'create',
-        planner: {
-          ...planner,
-          guestList: sanitizeGuestListForApi(planner.guestList),
-        },
-        organizerName,
-        organizerContact,
-        spamTrap,
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'createEventCheckout', spamTrap }),
       })
-
-      localStorage.removeItem(DRAFT_STORAGE_KEY)
-
-      if (event.manageUrl) {
-        window.location.href = event.manageUrl
-        return
-      }
-
-      applyRemoteEvent(event, 'Utworzono wydarzenie online.')
+      const body = await parseApiResponse(response)
+      if (!body.checkoutUrl) throw new Error('Brak adresu platnosci w odpowiedzi serwera.')
+      setSpamTrap('')
+      window.location.assign(body.checkoutUrl)
     } catch (error) {
+      setApiMessage('')
       setApiError((error as Error).message)
     }
   }
@@ -633,7 +727,7 @@ function App() {
           <p className="hero-strip-lead">
             {route.isRemote
               ? 'Dane sa wspoldzielone przez Netlify Blobs. Uzyj zakladek powyzej, aby przejsc miedzy sekcjami.'
-              : 'Uzupelnij zakladki po kolei, potem utworz wydarzenie online.'}
+              : 'Uzupelnij zakladki po kolei. Utworzenie wydarzenia online kosztuje jednorazowo 5 zl (Stripe), potem otrzymasz linki.'}
           </p>
           <div className="hero-actions">
             {route.isRemote ? (
@@ -641,8 +735,8 @@ function App() {
                 Zobacz prezenty
               </button>
             ) : (
-              <button className="button primary" type="button" onClick={createOnlineEvent}>
-                Utworz wydarzenie online
+              <button className="button primary" type="button" onClick={startPaidOnlineEventCreation}>
+                Zaplac 5 zl i utworz wydarzenie
               </button>
             )}
             {route.isRemote && canManage ? (
@@ -759,8 +853,8 @@ function App() {
                 }}
               />
               <div className="hero-actions">
-                <button className="button primary" type="button" onClick={createOnlineEvent}>
-                  Utworz wydarzenie online
+                <button className="button primary" type="button" onClick={startPaidOnlineEventCreation}>
+                  Zaplac 5 zl i utworz wydarzenie
                 </button>
                 <button className="button secondary" type="button" onClick={resetDraft}>
                   Wyczysc wersje robocza

@@ -43,7 +43,16 @@ Ustawienia deploya:
 - publish directory: `dist`,
 - functions directory: `netlify/functions`.
 
-Po deployu strona glowna dziala jako demo. Klikniecie `Utworz wydarzenie online` zapisuje event w Netlify Blobs i przekierowuje organizatora na prywatny link zarzadzania. Link publiczny mozna udostepnic rodzicom.
+Po deployu strona glowna dziala jako demo. Przycisk **Zaplac 5 zl i utworz wydarzenie** otwiera **Stripe Checkout**; po udanej platnosci wydarzenie zapisuje sie w Netlify Blobs i organizator jest przekierowany na prywatny link zarzadzania. Link publiczny mozna udostepnic rodzicom.
+
+### Zmienne srodowiskowe (Netlify → Site settings → Environment variables)
+
+| Zmienna | Opis |
+|--------|------|
+| `STRIPE_SECRET_KEY` | Klucz tajny Stripe (`sk_live_...` lub `sk_test_...`). Bez niego utworzenie wydarzenia zwroci blad konfiguracji. |
+| `URL` | Ustawiane automatycznie przez Netlify na URL produkcji; uzywane do `success_url` / `cancel_url` w Checkout (w razie potrzeby ustaw recznie glowna domene). |
+
+Test platnosci: w Stripe wlacz tryb testowy i uzyj `sk_test_...`; karta testowa np. `4242 4242 4242 4242`.
 
 ## Notatki produktowe
 
