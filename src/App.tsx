@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import heroImg from './assets/hero.png'
 import { emptyPlanner, initialState } from './demoData'
 import { GiftIdeasGuide } from './components/GiftIdeasGuide'
 import { SuggestionForm } from './components/SuggestionForm'
@@ -751,6 +752,7 @@ function App() {
       </header>
 
       <section className="hero-strip glass-panel">
+        <img src={heroImg} className="hero-decoration" aria-hidden alt="" />
         <div className="hero-strip-copy">
           <p className="eyebrow">{route.isRemote ? 'Wydarzenie online' : 'Tworzenie wydarzenia'}</p>
           <h1 className="hero-strip-title">
