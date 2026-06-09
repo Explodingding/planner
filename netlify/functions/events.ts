@@ -2,6 +2,7 @@ import { getStore } from '@netlify/blobs'
 import Stripe from 'stripe'
 import type {
   ApiResponse,
+  CreateEventCheckoutRequest,
   CreateEventRequest,
   EventApiRequest,
   EventDetails,
@@ -132,25 +133,65 @@ function stripeUsedSessionKey(sessionId: string) {
   return `stripe-checkout-used/${sessionId}`
 }
 
-async function isStripeCheckoutSessionConsumed(sessionId: string): Promise<boolean> {
-  const store = getStore(STORE_NAME)
-  const hit = await store.get(stripeUsedSessionKey(sessionId), { type: 'json' })
-  return Boolean(hit)
+function checkoutDraftKey(draftId: string) {
+  return `checkout-drafts/${draftId}`
 }
 
-async function markStripeCheckoutSessionConsumed(sessionId: string) {
-  const store = getStore(STORE_NAME)
-  await store.setJSON(stripeUsedSessionKey(sessionId), { consumedAt: new Date().toISOString() })
+/** Snapshot szkicu wydarzenia zapisywany przed przekierowaniem do Stripe. */
+type CheckoutDraft = {
+  planner: PlannerState
+  organizerName: string
+  organizerContact: string
+  createdAt: string
 }
 
-async function assertStripeCheckoutPaidForEventCreate(sessionId: string) {
+/** Rekord konsumpcji sesji Stripe; eventId pojawia sie po udanym utworzeniu wydarzenia. */
+type CheckoutClaim = {
+  claimedAt: string
+  eventId?: string
+}
+
+/**
+ * Atomowo przejmuje sesje Stripe do utworzenia wydarzenia (onlyIfNew).
+ * Zwraca true, gdy to zadanie wygralo claim; false, gdy sesja jest juz przejeta.
+ */
+async function claimStripeCheckoutSession(sessionId: string): Promise<boolean> {
+  const store = getStore(STORE_NAME)
+  const result = await store.setJSON(
+    stripeUsedSessionKey(sessionId),
+    { claimedAt: new Date().toISOString() } satisfies CheckoutClaim,
+    { onlyIfNew: true },
+  )
+  return result.modified
+}
+
+async function readCheckoutClaim(sessionId: string): Promise<CheckoutClaim | null> {
+  const store = getStore(STORE_NAME)
+  const claim = (await store.get(stripeUsedSessionKey(sessionId), {
+    type: 'json',
+    consistency: 'strong',
+  })) as CheckoutClaim | null
+  return claim ?? null
+}
+
+async function finalizeCheckoutClaim(sessionId: string, eventId: string) {
+  const store = getStore(STORE_NAME)
+  await store.setJSON(stripeUsedSessionKey(sessionId), {
+    claimedAt: new Date().toISOString(),
+    eventId,
+  } satisfies CheckoutClaim)
+}
+
+async function releaseCheckoutClaim(sessionId: string) {
+  const store = getStore(STORE_NAME)
+  await store.delete(stripeUsedSessionKey(sessionId))
+}
+
+/** Waliduje, ze sesja Stripe to oplacona platnosc za utworzenie wydarzenia, i zwraca ja do odczytu metadanych. */
+async function retrievePaidEventCreateSession(sessionId: string): Promise<Stripe.Checkout.Session> {
   const cleanId = cleanText(sessionId, 200)
   if (!cleanId.startsWith('cs_')) {
     throw new ApiError('Nieprawidlowy identyfikator sesji platnosci.', 400)
-  }
-
-  if (await isStripeCheckoutSessionConsumed(cleanId)) {
-    throw new ApiError('Ta platnosc zostala juz wykorzystana do utworzenia wydarzenia.', 403)
   }
 
   const stripe = getStripe()
@@ -173,6 +214,8 @@ async function assertStripeCheckoutPaidForEventCreate(sessionId: string) {
   if (currency !== 'pln') {
     throw new ApiError('Niezgodna waluta platnosci.', 400)
   }
+
+  return session
 }
 
 function cleanText(value: unknown, maxLength: number) {
@@ -544,6 +587,22 @@ async function handleCreateEventCheckout(req: Request, body: EventApiRequest) {
   if (body.action !== 'createEventCheckout') throw new ApiError('Nieprawidlowa akcja.')
   assertNoSpam(body.spamTrap)
 
+  const payload = body as CreateEventCheckoutRequest
+
+  // Walidacja PRZED platnoscia — blad danych nie moze wyjsc dopiero po pobraniu 5 zl.
+  const organizerName = requireText(payload.organizerName, 'Imie organizatora', 120)
+  const organizerContact = requireText(payload.organizerContact, 'Kontakt organizatora', 160)
+  const planner = validatePlanner(payload.planner)
+
+  // Snapshot szkicu na serwerze: powrot z platnosci nie zalezy juz od localStorage przegladarki.
+  const draftId = crypto.randomUUID()
+  await getStore(STORE_NAME).setJSON(checkoutDraftKey(draftId), {
+    planner,
+    organizerName,
+    organizerContact,
+    createdAt: new Date().toISOString(),
+  } satisfies CheckoutDraft)
+
   const base = getPublicSiteBaseUrl(req)
   const stripe = getStripe()
 
@@ -562,8 +621,10 @@ async function handleCreateEventCheckout(req: Request, body: EventApiRequest) {
         quantity: 1,
       },
     ],
+    client_reference_id: draftId,
     metadata: {
       purpose: 'event_create',
+      draftId,
     },
     success_url: `${base}/?eventCheckout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${base}/?eventCheckout=cancel`,
@@ -582,35 +643,85 @@ async function handleCreate(req: Request, body: EventApiRequest) {
 
   const payload = body as CreateEventRequest
   const sessionId = requireText(payload.stripeCheckoutSessionId, 'Identyfikator platnosci', 200)
-  await assertStripeCheckoutPaidForEventCreate(sessionId)
+  const session = await retrievePaidEventCreateSession(sessionId)
 
-  const planner = validatePlanner(payload.planner)
-  const now = new Date().toISOString()
-  const createdBy = `${requireText(payload.organizerName, 'Imie organizatora', 120)} <${requireText(
-    payload.organizerContact,
-    'Kontakt organizatora',
-    160,
-  )}>`
-
-  const record: EventRecord = {
-    id: createEventSlug(planner.event.childName),
-    organizerToken: crypto.randomUUID(),
-    version: CURRENT_VERSION,
-    status: 'active',
-    visibility: 'public_link',
-    createdBy,
-    lastUpdatedBy: createdBy,
-    planner,
-    createdAt: now,
-    updatedAt: now,
+  // Atomowy claim sesji: jedna platnosc = dokladnie jedno wydarzenie.
+  const claimed = await claimStripeCheckoutSession(sessionId)
+  if (!claimed) {
+    const claim = await readCheckoutClaim(sessionId)
+    if (claim?.eventId) {
+      const existing = await storage.read(claim.eventId)
+      if (existing) {
+        // Idempotencja: ponowne wywolanie z tym samym session_id zwraca juz utworzone wydarzenie.
+        return json({ event: stripPrivateData(existing, req, true) })
+      }
+    }
+    throw new ApiError(
+      'Tworzenie wydarzenia dla tej platnosci jest w toku. Odswiez strone za chwile.',
+      409,
+    )
   }
 
-  await getStore(STORE_NAME).setJSON(getStoreKey(record.id), record)
+  let record: EventRecord
+  let draftId = ''
 
   try {
-    await markStripeCheckoutSessionConsumed(sessionId)
+    draftId = cleanText(session.metadata?.draftId ?? session.client_reference_id, 100)
+    if (!draftId) {
+      throw new ApiError('Platnosc nie ma przypisanego szkicu wydarzenia. Skontaktuj sie z pomoca.', 400)
+    }
+
+    const draft = (await getStore(STORE_NAME).get(checkoutDraftKey(draftId), {
+      type: 'json',
+      consistency: 'strong',
+    })) as CheckoutDraft | null
+    if (!draft) {
+      throw new ApiError('Nie znaleziono szkicu wydarzenia dla tej platnosci. Skontaktuj sie z pomoca.', 404)
+    }
+
+    const planner = validatePlanner(draft.planner)
+    const now = new Date().toISOString()
+    const createdBy = `${requireText(draft.organizerName, 'Imie organizatora', 120)} <${requireText(
+      draft.organizerContact,
+      'Kontakt organizatora',
+      160,
+    )}>`
+
+    record = {
+      id: createEventSlug(planner.event.childName),
+      organizerToken: crypto.randomUUID(),
+      version: CURRENT_VERSION,
+      status: 'active',
+      visibility: 'public_link',
+      createdBy,
+      lastUpdatedBy: createdBy,
+      planner,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    await getStore(STORE_NAME).setJSON(getStoreKey(record.id), record)
   } catch (error) {
-    console.error('Nie udalo sie oznaczyc sesji Stripe jako wykorzystanej', error)
+    // Wydarzenie nie powstalo — zwolnienie claimu pozwala ponowic probe bez utraty platnosci.
+    try {
+      await releaseCheckoutClaim(sessionId)
+    } catch (releaseError) {
+      console.error('Nie udalo sie zwolnic claimu sesji Stripe', releaseError)
+    }
+    throw error
+  }
+
+  // Od tego miejsca wydarzenie istnieje — claimu nie wolno juz zwalniac (grozi duplikatem).
+  try {
+    await finalizeCheckoutClaim(sessionId, record.id)
+  } catch (error) {
+    console.error('Nie udalo sie zapisac eventId w claimie sesji Stripe', error)
+  }
+
+  try {
+    await getStore(STORE_NAME).delete(checkoutDraftKey(draftId))
+  } catch {
+    // Sprzatanie szkicu jest best-effort; osierocony szkic nie szkodzi.
   }
 
   return json({

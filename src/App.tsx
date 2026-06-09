@@ -1,7 +1,9 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import heroImg from './assets/hero.png'
 import { emptyPlanner, initialState } from './demoData'
+import { track } from './analytics'
 import { GiftIdeasGuide } from './components/GiftIdeasGuide'
+import { PrivacyPage, TermsPage } from './components/LegalPages'
 import { SuggestionForm } from './components/SuggestionForm'
 import {
   EventSummary,
@@ -39,6 +41,7 @@ type RouteState = {
   organizerToken: string | null
   isRemote: boolean
   isManageRoute: boolean
+  staticPage: 'regulamin' | 'prywatnosc' | null
 }
 
 type ManagedActionPayload =
@@ -65,12 +68,15 @@ function getRoute(): RouteState {
   const token = new URLSearchParams(window.location.search).get('token')
   const isEventRoute = segments[0] === 'event' && Boolean(segments[1])
   const isManageRoute = segments[0] === 'manage' && Boolean(segments[1])
+  const staticPage =
+    segments[0] === 'regulamin' ? 'regulamin' : segments[0] === 'prywatnosc' ? 'prywatnosc' : null
 
   return {
     eventId: isEventRoute || isManageRoute ? segments[1] : null,
     organizerToken: token,
     isRemote: isEventRoute || isManageRoute,
     isManageRoute,
+    staticPage,
   }
 }
 
@@ -232,10 +238,11 @@ function App() {
         setPlanner(event.planner)
         setSelectedGiftId(event.planner.gifts[0]?.id ?? '')
         setApiError('')
+        track(route.isManageRoute ? 'manage_view' : 'event_view')
       })
       .catch((error: Error) => setApiError(error.message))
       .finally(() => setIsLoading(false))
-  }, [route.eventId, route.organizerToken])
+  }, [route.eventId, route.organizerToken, route.isManageRoute])
 
   const reservationsByGift = useMemo(() => {
     return planner.reservations.reduce<Record<string, Reservation[]>>((groups, reservation) => {
@@ -294,6 +301,7 @@ function App() {
       const checkout = params.get('eventCheckout')
 
       if (checkout === 'cancel') {
+        track('checkout_cancel')
         window.history.replaceState({}, '', window.location.pathname)
         setApiMessage('')
         setApiError('Platnosc zostala anulowana. Sprobuj ponownie.')
@@ -314,46 +322,21 @@ function App() {
       const inflightKey = `event-checkout-inflight-${sessionId}`
       if (sessionStorage.getItem(inflightKey)) return
       sessionStorage.setItem(inflightKey, '1')
+      track('checkout_success_return')
 
-      const pendingRaw = localStorage.getItem(CHECKOUT_ORGANIZER_KEY)
-      if (!pendingRaw) {
-        setApiError(
-          'Brak zapisanych danych organizatora. Uzupelnij formularz i rozpocznij plate od nowa.',
-        )
-        sessionStorage.removeItem(inflightKey)
-        return
-      }
-
-      let org: { organizerName: string; organizerContact: string }
-      try {
-        org = JSON.parse(pendingRaw) as { organizerName: string; organizerContact: string }
-      } catch {
-        setApiError('Nieprawidlowe dane organizatora w przegladarce.')
-        sessionStorage.removeItem(inflightKey)
-        return
-      }
-
-      setOrganizerName(org.organizerName)
-      setOrganizerContact(org.organizerContact)
-
-      const plannerSnapshot = loadPlannerDraft()
-
+      // Szkic wydarzenia i dane organizatora sa odtwarzane ze snapshotu na serwerze
+      // (zapisanego przed platnoscia) — powrot dziala nawet po wyczyszczeniu przegladarki.
       void (async () => {
         try {
           setApiMessage('Tworze wydarzenie online...')
           setApiError('')
           const event = await callEventApi({
             action: 'create',
-            planner: {
-              ...plannerSnapshot,
-              guestList: sanitizeGuestListForApi(plannerSnapshot.guestList),
-            },
-            organizerName: org.organizerName,
-            organizerContact: org.organizerContact,
             stripeCheckoutSessionId: sessionId,
             spamTrap: '',
           })
 
+          track('create_ok')
           sessionStorage.setItem(doneKey, '1')
           sessionStorage.removeItem(inflightKey)
           localStorage.removeItem(CHECKOUT_ORGANIZER_KEY)
@@ -367,6 +350,7 @@ function App() {
 
           applyRemoteEvent(event, 'Utworzono wydarzenie online.')
         } catch (error) {
+          track('create_fail')
           setApiMessage('')
           setApiError((error as Error).message)
           sessionStorage.removeItem(inflightKey)
@@ -533,19 +517,24 @@ function App() {
     if (!validateCreateOnlineEvent()) return
 
     try {
-      localStorage.setItem(
-        CHECKOUT_ORGANIZER_KEY,
-        JSON.stringify({
-          organizerName: organizerName.trim(),
-          organizerContact: organizerContact.trim(),
-        }),
-      )
       setApiMessage('Przekierowanie do bezpiecznej platnosci (Stripe)...')
       setApiError('')
+      track('checkout_start')
+      // Szkic + dane organizatora ida na serwer przed platnoscia (walidacja przed pobraniem oplaty,
+      // odpornosc na wyczyszczenie localStorage miedzy platnoscia a powrotem).
       const response = await fetch(API_URL, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'createEventCheckout', spamTrap }),
+        body: JSON.stringify({
+          action: 'createEventCheckout',
+          planner: {
+            ...planner,
+            guestList: sanitizeGuestListForApi(planner.guestList),
+          },
+          organizerName: organizerName.trim(),
+          organizerContact: organizerContact.trim(),
+          spamTrap,
+        }),
       })
       const body = await parseApiResponse(response)
       if (!body.checkoutUrl) throw new Error('Brak adresu platnosci w odpowiedzi serwera.')
@@ -603,6 +592,7 @@ function App() {
           message: reservationMessage.trim(),
         },
       })
+      track('reserve_ok')
       applyRemoteEvent(remoteEvent, 'Rezerwacja trafila do zatwierdzenia.')
       setReservationMessage('')
     } catch (error) {
@@ -628,6 +618,7 @@ function App() {
           note: attendanceNote.trim(),
         },
       })
+      track('rsvp_ok')
       applyRemoteEvent(remoteEvent, 'Potwierdzenie obecnosci zapisane.')
       setAttendanceNote('')
     } catch (error) {
@@ -676,6 +667,9 @@ function App() {
     await navigator.clipboard.writeText(value)
     setApiMessage('Skopiowano link.')
   }
+
+  if (route.staticPage === 'regulamin') return <TermsPage />
+  if (route.staticPage === 'prywatnosc') return <PrivacyPage />
 
   if (isLoading) {
     return (
@@ -1156,6 +1150,9 @@ function App() {
             : 'Po utworzeniu wydarzenia otrzymasz linki do udostepnienia i zarzadzania.'}
         </p>
         <SuggestionForm />
+        <p className="footer-legal">
+          <a href="/regulamin">Regulamin</a> · <a href="/prywatnosc">Polityka prywatności</a>
+        </p>
       </section>
     </main>
   )

@@ -106,16 +106,17 @@ export type ApiResponse = {
 
 export type CreateEventRequest = {
   action: 'create'
-  planner: PlannerState
-  organizerName: string
-  organizerContact: string
-  /** Identyfikator sesji Stripe Checkout po udanej płatności (query `session_id`). */
+  /** Identyfikator sesji Stripe Checkout po udanej płatności (query `session_id`). Dane wydarzenia są odtwarzane ze snapshotu zapisanego na serwerze przed płatnością. */
   stripeCheckoutSessionId: string
   spamTrap?: string
 }
 
 export type CreateEventCheckoutRequest = {
   action: 'createEventCheckout'
+  /** Szkic wydarzenia zapisywany na serwerze przed przekierowaniem do płatności. */
+  planner: PlannerState
+  organizerName: string
+  organizerContact: string
   spamTrap?: string
 }
 
