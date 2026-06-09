@@ -28,6 +28,9 @@ const MAX_RESERVATIONS = 120
 /** Jednorazowa opłata za utworzenie wydarzenia (PLN → grosze). */
 const EVENT_CREATE_AMOUNT_GROSZE = 500
 
+/** Po ilu dniach od daty imprezy wydarzenie jest archiwizowane, a kontakty czyszczone (RODO). */
+const ARCHIVE_AFTER_DAYS = 30
+
 class ApiError extends Error {
   constructor(
     message: string,
@@ -35,10 +38,6 @@ class ApiError extends Error {
   ) {
     super(message)
   }
-}
-
-type ManagedRecordResult = {
-  record: EventRecord
 }
 
 const storage = {
@@ -50,6 +49,21 @@ const storage = {
     })
 
     return record ? normalizeRecord(record as Partial<EventRecord>) : null
+  },
+
+  /** Odczyt z etagiem — podstawa warunkowych zapisow (ochrona przed nadpisaniem rownoleglych zmian). */
+  async readWithEtag(id: string): Promise<{ record: EventRecord; etag?: string } | null> {
+    const store = getStore(STORE_NAME)
+    const result = await store.getWithMetadata(getStoreKey(id), {
+      consistency: 'strong',
+      type: 'json',
+    })
+
+    if (!result) return null
+    return {
+      record: normalizeRecord(result.data as Partial<EventRecord>),
+      etag: result.etag,
+    }
   },
 
   async write(record: EventRecord, actor: string) {
@@ -64,6 +78,56 @@ const storage = {
     await store.setJSON(getStoreKey(record.id), nextRecord)
     return nextRecord
   },
+
+  /**
+   * Zapis warunkowy: powiedzie sie tylko, gdy rekord nie zmienil sie od odczytu (etag).
+   * Zwraca zapisany rekord albo null przy konflikcie (wtedy caller ponawia odczyt+mutacje).
+   * Brak etagu (np. lokalna emulacja Blobs) => zapis bezwarunkowy.
+   */
+  async writeConditional(record: EventRecord, actor: string, etag?: string) {
+    const store = getStore(STORE_NAME)
+    const nextRecord: EventRecord = {
+      ...record,
+      version: (record.version || 0) + 1,
+      lastUpdatedBy: actor,
+      updatedAt: new Date().toISOString(),
+    }
+
+    const result = await store.setJSON(
+      getStoreKey(record.id),
+      nextRecord,
+      etag ? { onlyIfMatch: etag } : undefined,
+    )
+
+    return result.modified ? nextRecord : null
+  },
+}
+
+const UPDATE_RETRY_ATTEMPTS = 3
+
+/**
+ * Bezpieczna aktualizacja wydarzenia: odczyt z etagiem -> mutacja -> zapis warunkowy,
+ * z ponowieniem przy konflikcie. `apply` mutuje swiezy rekord i zwraca aktora zapisu;
+ * walidacje wewnatrz `apply` wykonuja sie na aktualnym stanie przy kazdej probie.
+ */
+async function updateEventWithRetry(
+  id: string | undefined,
+  apply: (record: EventRecord) => string,
+): Promise<EventRecord> {
+  if (!id) throw new ApiError('Brakuje identyfikatora wydarzenia.', 400)
+
+  for (let attempt = 0; attempt < UPDATE_RETRY_ATTEMPTS; attempt += 1) {
+    const found = await storage.readWithEtag(id)
+    if (!found) throw new ApiError('Nie znaleziono wydarzenia.', 404)
+
+    const record = maybeArchiveExpiredEvent(found.record)
+    const actor = apply(record)
+
+    const saved = await storage.writeConditional(record, actor, found.etag)
+    if (saved) return saved
+  }
+
+  throw new ApiError('Wiele osob zapisuje zmiany jednoczesnie. Sprobuj ponownie za chwile.', 409)
 }
 
 function json(data: ApiResponse, init?: ResponseInit) {
@@ -248,7 +312,7 @@ function validateEventDetails(event: EventDetails): EventDetails {
   }
 }
 
-function safeGiftLink(value: unknown): string {
+export function safeGiftLink(value: unknown): string {
   const text = cleanText(value, 2000)
   if (!text) return ''
 
@@ -261,7 +325,7 @@ function safeGiftLink(value: unknown): string {
   }
 }
 
-function validateGiftLink(value: unknown): string {
+export function validateGiftLink(value: unknown): string {
   const text = cleanText(value, 2000)
   if (!text) return ''
 
@@ -319,7 +383,7 @@ function normalizedPhoneKey(value: string) {
   return x.slice(-9)
 }
 
-function validateGuestList(guestList: Guest[] = []) {
+export function validateGuestList(guestList: Guest[] = []) {
   const drafted = guestList.slice(0, MAX_GUESTS).map((guest) => ({
     id: guest.id || createId('guest'),
     name: cleanText(guest.name, 120),
@@ -348,7 +412,7 @@ function normalizeGuestListSoft(raw: unknown): Guest[] {
   })
 }
 
-function validatePlanner(planner: PlannerState): PlannerState {
+export function validatePlanner(planner: PlannerState): PlannerState {
   return {
     event: validateEventDetails(planner.event),
     guestList: validateGuestList(planner.guestList),
@@ -417,7 +481,7 @@ function digitsOnly(value: string) {
   return value.replace(/\D/g, '')
 }
 
-function phonesEquivalent(a: string, b: string): boolean {
+export function phonesEquivalent(a: string, b: string): boolean {
   const da = digitsOnly(a)
   const db = digitsOnly(b)
   if (da.length < 9 || db.length < 9) return false
@@ -445,7 +509,7 @@ function contactsEquivalent(a: string, b: string): boolean {
   return phonesEquivalent(a, b)
 }
 
-function maskPhoneForPublic(raw: string): string {
+export function maskPhoneForPublic(raw: string): string {
   const d = digitsOnly(raw)
   if (d.length < 4) return ''
   return `*** *** ${d.slice(-3)}`
@@ -477,7 +541,7 @@ function requireListedGuest(record: EventRecord, guestName: string, contact: str
   }
 }
 
-function normalizeRecord(record: Partial<EventRecord>): EventRecord {
+export function normalizeRecord(record: Partial<EventRecord>): EventRecord {
   const now = new Date().toISOString()
 
   return {
@@ -516,7 +580,44 @@ function emptyEvent(): EventDetails {
   }
 }
 
-function stripPrivateData(record: EventRecord, req: Request, canManage: boolean): PublicEventRecord {
+export function isEventExpired(record: EventRecord, now = new Date()): boolean {
+  if (record.status !== 'active') return false
+
+  const eventDate = new Date(record.planner.event.date)
+  if (Number.isNaN(eventDate.getTime())) return false
+
+  const archiveAfter = eventDate.getTime() + ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000
+  return now.getTime() > archiveAfter
+}
+
+/**
+ * Lazy archiwizacja: po uplywie ARCHIVE_AFTER_DAYS od daty imprezy wydarzenie przechodzi
+ * w status `archived`, a dane kontaktowe gosci sa czyszczone (minimalizacja danych, RODO).
+ * Zwraca ten sam obiekt (zmutowany), zeby wpisac sie w istniejacy przeplyw zapisu.
+ */
+export function maybeArchiveExpiredEvent(record: EventRecord, now = new Date()): EventRecord {
+  if (!isEventExpired(record, now)) return record
+
+  record.status = 'archived'
+  record.planner.guestList = record.planner.guestList.map((guest) => ({
+    ...guest,
+    contact: '',
+  }))
+  record.planner.reservations = record.planner.reservations.map((reservation) => ({
+    ...reservation,
+    contact: '',
+    message: '',
+  }))
+  record.planner.rsvps = record.planner.rsvps.map((rsvp) => ({
+    ...rsvp,
+    contact: '',
+    note: '',
+  }))
+
+  return record
+}
+
+export function stripPrivateData(record: EventRecord, req: Request, canManage: boolean): PublicEventRecord {
   const origin = getOrigin(req)
   const publicUrl = `${origin}/event/${record.id}`
   const manageUrl = canManage
@@ -558,16 +659,6 @@ function stripPrivateData(record: EventRecord, req: Request, canManage: boolean)
   }
 }
 
-async function requireManagedRecord(id: string | undefined, token: string | undefined): Promise<ManagedRecordResult> {
-  if (!id || !token) throw new ApiError('Brakuje identyfikatora wydarzenia lub tokenu.', 400)
-
-  const record = await storage.read(id)
-  if (!record) throw new ApiError('Nie znaleziono wydarzenia.', 404)
-  if (record.organizerToken !== token) throw new ApiError('Nieprawidlowy link organizatora.', 403)
-
-  return { record }
-}
-
 async function handleGet(req: Request) {
   const url = new URL(req.url)
   const id = url.searchParams.get('id')
@@ -575,8 +666,20 @@ async function handleGet(req: Request) {
 
   if (!id) throw new ApiError('Brakuje identyfikatora wydarzenia.')
 
-  const record = await storage.read(id)
-  if (!record) throw new ApiError('Nie znaleziono wydarzenia.', 404)
+  const found = await storage.readWithEtag(id)
+  if (!found) throw new ApiError('Nie znaleziono wydarzenia.', 404)
+
+  let record = found.record
+
+  if (isEventExpired(record)) {
+    record = maybeArchiveExpiredEvent(record)
+    // Best-effort utrwalenie archiwizacji; przy konflikcie i tak serwujemy widok zarchiwizowany.
+    try {
+      await storage.writeConditional(record, 'auto-archive', found.etag)
+    } catch (error) {
+      console.error('Nie udalo sie zapisac archiwizacji wydarzenia', error)
+    }
+  }
 
   return json({
     event: stripPrivateData(record, req, token === record.organizerToken),
@@ -735,41 +838,47 @@ async function handlePublicWrite(req: Request, body: EventApiRequest) {
   }
   assertNoSpam(body.spamTrap)
 
-  const record = await storage.read(body.id)
-  if (!record) throw new ApiError('Nie znaleziono wydarzenia.', 404)
-  if (record.status !== 'active') throw new ApiError('To wydarzenie nie przyjmuje juz odpowiedzi.')
-
-  if (body.action === 'reserveGift') {
-    const payload = validateReservation(record, body.reservation)
-    const reservation: Reservation = {
-      ...payload,
-      id: createId('reservation'),
-      status: 'pending',
-      createdAt: new Date().toISOString(),
+  // Mutacja w petli retry: walidacja (np. "prezent juz zarezerwowany") liczy sie
+  // wzgledem swiezego stanu przy kazdej probie — rownolegle zapisy gosci sie nie nadpisuja.
+  const saved = await updateEventWithRetry(body.id, (record) => {
+    if (record.status !== 'active') {
+      throw new ApiError('To wydarzenie nie przyjmuje juz odpowiedzi.')
     }
 
-    record.planner.reservations = [...record.planner.reservations, reservation]
-    const saved = await storage.write(record, payload.contact)
-    return json({ event: stripPrivateData(saved, req, false) })
-  }
+    if (body.action === 'reserveGift') {
+      const payload = validateReservation(record, body.reservation)
+      const reservation: Reservation = {
+        ...payload,
+        id: createId('reservation'),
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      }
 
-  const payload = validateRsvp(record, body.rsvp)
-  const existing = record.planner.rsvps.find((rsvp) => contactsEquivalent(rsvp.contact, payload.contact))
-  const rsvp: Rsvp = {
-    ...payload,
-    id: existing?.id ?? createId('rsvp'),
-    updatedAt: new Date().toISOString(),
-  }
+      record.planner.reservations = [...record.planner.reservations, reservation]
+      return payload.contact
+    }
 
-  if (!existing && record.planner.rsvps.length >= MAX_RSVPS) {
-    throw new ApiError('Lista gosci jest pelna.')
-  }
+    const payload = validateRsvp(record, body.rsvp)
+    const existing = record.planner.rsvps.find((rsvp) =>
+      contactsEquivalent(rsvp.contact, payload.contact),
+    )
+    const rsvp: Rsvp = {
+      ...payload,
+      id: existing?.id ?? createId('rsvp'),
+      updatedAt: new Date().toISOString(),
+    }
 
-  record.planner.rsvps = existing
-    ? record.planner.rsvps.map((item) => (item.id === existing.id ? rsvp : item))
-    : [...record.planner.rsvps, rsvp]
+    if (!existing && record.planner.rsvps.length >= MAX_RSVPS) {
+      throw new ApiError('Lista gosci jest pelna.')
+    }
 
-  const saved = await storage.write(record, payload.contact)
+    record.planner.rsvps = existing
+      ? record.planner.rsvps.map((item) => (item.id === existing.id ? rsvp : item))
+      : [...record.planner.rsvps, rsvp]
+
+    return payload.contact
+  })
+
   return json({ event: stripPrivateData(saved, req, false) })
 }
 
@@ -783,55 +892,66 @@ async function handleManagedWrite(req: Request, body: EventApiRequest) {
     throw new ApiError('Nieprawidlowa akcja.')
   }
 
-  const { record } = await requireManagedRecord(body.id, body.token)
-
-  if (body.action === 'updateEvent') {
-    record.planner.event = validateEventDetails(body.event)
+  if (!body.id || !body.token) {
+    throw new ApiError('Brakuje identyfikatora wydarzenia lub tokenu.', 400)
   }
 
-  if (body.action === 'updateGuestList') {
-    record.planner.guestList = validateGuestList(body.guestList)
-  }
-
-  if (body.action === 'addGift') {
-    if (record.planner.gifts.length >= MAX_GIFTS) throw new ApiError('Lista prezentow jest pelna.')
-    record.planner.gifts = [
-      ...record.planner.gifts,
-      {
-        ...validateGift(body.gift),
-        id: createId('gift'),
-      },
-    ]
-  }
-
-  if (body.action === 'updateReservationStatus') {
-    if (!['pending', 'approved', 'rejected', 'bought'].includes(body.status)) {
-      throw new ApiError('Nieprawidlowy status rezerwacji.')
+  const saved = await updateEventWithRetry(body.id, (record) => {
+    if (record.organizerToken !== body.token) {
+      throw new ApiError('Nieprawidlowy link organizatora.', 403)
     }
 
-    const target = record.planner.reservations.find(
-      (reservation) => reservation.id === body.reservationId,
-    )
-    if (!target) throw new ApiError('Nie znaleziono rezerwacji.', 404)
+    if (body.action === 'updateEvent') {
+      record.planner.event = validateEventDetails(body.event)
+    }
 
-    record.planner.reservations = record.planner.reservations.map((reservation) => {
-      if (reservation.id === body.reservationId) {
-        return { ...reservation, status: body.status as ReservationStatus }
+    if (body.action === 'updateGuestList') {
+      record.planner.guestList = validateGuestList(body.guestList)
+    }
+
+    if (body.action === 'addGift') {
+      if (record.planner.gifts.length >= MAX_GIFTS) {
+        throw new ApiError('Lista prezentow jest pelna.')
+      }
+      record.planner.gifts = [
+        ...record.planner.gifts,
+        {
+          ...validateGift(body.gift),
+          id: createId('gift'),
+        },
+      ]
+    }
+
+    if (body.action === 'updateReservationStatus') {
+      if (!['pending', 'approved', 'rejected', 'bought'].includes(body.status)) {
+        throw new ApiError('Nieprawidlowy status rezerwacji.')
       }
 
-      if (
-        body.status === 'approved' &&
-        reservation.giftId === target.giftId &&
-        reservation.status === 'pending'
-      ) {
-        return { ...reservation, status: 'rejected' }
-      }
+      const target = record.planner.reservations.find(
+        (reservation) => reservation.id === body.reservationId,
+      )
+      if (!target) throw new ApiError('Nie znaleziono rezerwacji.', 404)
 
-      return reservation
-    })
-  }
+      record.planner.reservations = record.planner.reservations.map((reservation) => {
+        if (reservation.id === body.reservationId) {
+          return { ...reservation, status: body.status as ReservationStatus }
+        }
 
-  const saved = await storage.write(record, record.createdBy)
+        if (
+          body.status === 'approved' &&
+          reservation.giftId === target.giftId &&
+          reservation.status === 'pending'
+        ) {
+          return { ...reservation, status: 'rejected' }
+        }
+
+        return reservation
+      })
+    }
+
+    return record.createdBy
+  })
+
   return json({ event: stripPrivateData(saved, req, true) })
 }
 
@@ -849,8 +969,10 @@ async function handlePost(req: Request) {
 
 export default async (req: Request) => {
   try {
-    if (req.method === 'GET') return handleGet(req)
-    if (req.method === 'POST') return handlePost(req)
+    // `await` jest konieczny: bez niego odrzucona promesa omija try/catch
+    // i ApiError wychodzi jako surowe 500 zamiast czytelnego JSON-a.
+    if (req.method === 'GET') return await handleGet(req)
+    if (req.method === 'POST') return await handlePost(req)
 
     return json({ error: 'Metoda nie jest obslugiwana.' }, { status: 405 })
   } catch (error) {

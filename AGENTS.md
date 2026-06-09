@@ -18,8 +18,9 @@ Prezentownik MVP — a React/TypeScript SPA for planning kids' birthday events. 
 |-------|---------|
 | Lint | `npm run lint` |
 | Type-check + build | `npm run build` |
+| Tests | `npm test` (Vitest; backend logic in `tests/events.test.ts`) |
 
-There are no automated tests (no test runner or test files in the project).
+Note: `tsc -b` does not type-check `netlify/functions/` — run `npx tsc --noEmit --strict --target es2023 --module esnext --moduleResolution bundler --skipLibCheck netlify/functions/*.ts` to verify functions separately.
 
 ### Key caveats
 

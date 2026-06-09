@@ -16,7 +16,6 @@ import {
   SharePanel,
 } from './components/PlannerSections'
 import type {
-  ApiResponse,
   AttendanceStatus,
   EventApiRequest,
   EventDetails,
@@ -29,20 +28,19 @@ import type {
   VerifiedGuest,
 } from './types'
 import { GIFT_CATEGORIES } from './constants'
+import { API_URL, callEventApi, parseApiResponse, readApiResponse } from './lib/api'
+import {
+  CHECKOUT_ORGANIZER_KEY,
+  DRAFT_STORAGE_KEY,
+  createId,
+  digitsOnly,
+  formatDate,
+  loadPlannerDraft,
+  phonesMatch,
+  sanitizeGuestListForApi,
+} from './lib/planner'
+import { getRoute } from './lib/route'
 import './App.css'
-
-const DRAFT_STORAGE_KEY = 'prezentownik-production-draft'
-/** Dane organizatora zachowane przed przekierowaniem do Stripe Checkout. */
-const CHECKOUT_ORGANIZER_KEY = 'prezentownik-checkout-organizer'
-const API_URL = '/.netlify/functions/events'
-
-type RouteState = {
-  eventId: string | null
-  organizerToken: string | null
-  isRemote: boolean
-  isManageRoute: boolean
-  staticPage: 'regulamin' | 'prywatnosc' | null
-}
 
 type ManagedActionPayload =
   | {
@@ -62,123 +60,6 @@ type ManagedActionPayload =
       reservationId: string
       status: ReservationStatus
     }
-
-function getRoute(): RouteState {
-  const segments = window.location.pathname.split('/').filter(Boolean)
-  const token = new URLSearchParams(window.location.search).get('token')
-  const isEventRoute = segments[0] === 'event' && Boolean(segments[1])
-  const isManageRoute = segments[0] === 'manage' && Boolean(segments[1])
-  const staticPage =
-    segments[0] === 'regulamin' ? 'regulamin' : segments[0] === 'prywatnosc' ? 'prywatnosc' : null
-
-  return {
-    eventId: isEventRoute || isManageRoute ? segments[1] : null,
-    organizerToken: token,
-    isRemote: isEventRoute || isManageRoute,
-    isManageRoute,
-    staticPage,
-  }
-}
-
-function loadPlannerDraft(): PlannerState {
-  try {
-    const stored = localStorage.getItem(DRAFT_STORAGE_KEY)
-    if (!stored) return emptyPlanner
-
-    const parsed = JSON.parse(stored) as Partial<PlannerState>
-
-    return {
-      event: { ...emptyPlanner.event, ...(parsed.event ?? {}) },
-      guestList: parsed.guestList ?? [],
-      gifts: (parsed.gifts ?? []).map((gift) => ({
-        ...gift,
-        link: typeof gift.link === 'string' ? gift.link : '',
-      })),
-      reservations: [],
-      rsvps: [],
-    }
-  } catch {
-    return emptyPlanner
-  }
-}
-
-function createId(prefix: string) {
-  return `${prefix}-${crypto.randomUUID()}`
-}
-
-function formatDate(value: string) {
-  if (!value) return 'Termin do ustalenia'
-
-  return new Intl.DateTimeFormat('pl-PL', {
-    dateStyle: 'long',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
-function digitsOnly(value: string) {
-  return value.replace(/\D/g, '')
-}
-
-function phonesMatch(a: string, b: string): boolean {
-  const da = digitsOnly(a)
-  const db = digitsOnly(b)
-  if (da.length < 9 || db.length < 9) return false
-  if (da === db) return true
-
-  const stripPl = (d: string) => {
-    if (d.startsWith('48') && d.length >= 11) return d.slice(2)
-    if (d.startsWith('0') && d.length >= 10) return d.slice(1)
-    return d
-  }
-
-  const sa = stripPl(da)
-  const sb = stripPl(db)
-  if (sa === sb) return true
-  if (sa.length >= 9 && sb.length >= 9 && sa.slice(-9) === sb.slice(-9)) return true
-
-  return false
-}
-
-function guestListRowComplete(guest: Guest): boolean {
-  return Boolean(guest.name.trim() && digitsOnly(guest.contact).length >= 9)
-}
-
-function sanitizeGuestListForApi(list: Guest[]): Guest[] {
-  return list.filter(guestListRowComplete)
-}
-
-async function parseApiResponse(response: Response): Promise<ApiResponse> {
-  const text = await response.text()
-  let body: ApiResponse = {}
-  if (text) {
-    try {
-      body = JSON.parse(text) as ApiResponse
-    } catch {
-      throw new Error(
-        response.ok
-          ? 'Serwer zwrocil nieprawidlowa odpowiedz (nie JSON).'
-          : `Blad serwera (${response.status}). Sprawdz czy funkcja Netlify jest wdrozona i czy adres API jest poprawny.`,
-      )
-    }
-  }
-
-  if (!response.ok) {
-    const hint =
-      response.status === 503
-        ? ' Sprawdz w panelu Netlify zmienna STRIPE_SECRET_KEY.'
-        : ''
-    throw new Error((body.error && String(body.error)) || `Zapytanie nie powiodlo sie (${response.status}).${hint}`)
-  }
-
-  return body
-}
-
-async function readApiResponse(response: Response) {
-  const body = await parseApiResponse(response)
-  if (!body.event) throw new Error('Brak danych wydarzenia w odpowiedzi API.')
-
-  return body.event
-}
 
 type RemoteTabId = 'info' | 'guests' | 'gifts' | 'help' | 'organizer'
 type CreateTabId = 'setup' | 'guests' | 'gifts' | 'help'
@@ -283,14 +164,6 @@ function App() {
     setApiMessage(message)
     setApiError('')
     setCreateValidationErrors([])
-  }
-
-  async function callEventApi(body: EventApiRequest) {
-    return fetch(API_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    }).then(readApiResponse)
   }
 
   useEffect(() => {
